@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import type { Vec3 } from '../net/network';
+import type { SceneMode, Vec3 } from '../net/network';
 import { asphaltTextures, brickTexture, neonTexture } from './textures';
 
 export interface Obstacle {
@@ -18,40 +18,62 @@ export interface Bounds {
 }
 
 export interface WorldGeom {
+  mode: SceneMode;
   obstacles: Obstacle[];
   bounds: Bounds;
   steamVents: Vec3[];
   updateFlicker(t: number): void;
+  dispose(): void;
 }
 
 const ALLEY_HALF_WIDTH = 8;
 const ALLEY_HALF_LENGTH = 30;
 
-export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): WorldGeom {
-  scene.background = new THREE.Color(0x07070d);
-  scene.fog = new THREE.FogExp2(0x07070d, 0.024);
+// Builds the whole alley for one time-of-day into a disposable group,
+// so the host's day/night choice can swap the environment live while
+// players, bottles and FX (added directly to the scene) survive.
+export function buildScene(
+  scene: THREE.Scene,
+  renderer: THREE.WebGLRenderer,
+  mode: SceneMode,
+): WorldGeom {
+  const night = mode === 'night';
+  const root = new THREE.Group();
+  scene.add(root);
+
+  scene.background = new THREE.Color(night ? 0x07070d : 0x9fb6d8);
+  scene.fog = night
+    ? new THREE.FogExp2(0x07070d, 0.024)
+    : new THREE.FogExp2(0xa8b8cc, 0.011);
 
   // Subtle image-based lighting so materials get specular life
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  scene.environmentIntensity = 0.3;
+  const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = envTexture;
+  scene.environmentIntensity = night ? 0.3 : 0.55;
   pmrem.dispose();
 
-  scene.add(new THREE.HemisphereLight(0x3a3a55, 0x0a0a0f, 0.65));
+  root.add(
+    night
+      ? new THREE.HemisphereLight(0x3a3a55, 0x0a0a0f, 0.65)
+      : new THREE.HemisphereLight(0xcfe0ff, 0x5c584a, 1.0),
+  );
 
-  // Cold moonlight casting the scene's shadows
-  const moon = new THREE.DirectionalLight(0x7484b8, 0.55);
-  moon.position.set(14, 24, -18);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
-  moon.shadow.camera.left = -12;
-  moon.shadow.camera.right = 12;
-  moon.shadow.camera.top = 34;
-  moon.shadow.camera.bottom = -34;
-  moon.shadow.camera.near = 1;
-  moon.shadow.camera.far = 70;
-  moon.shadow.bias = -0.0004;
-  scene.add(moon);
+  // Night: cold moonlight. Day: Baltic afternoon sun.
+  const sun = night
+    ? new THREE.DirectionalLight(0x7484b8, 0.55)
+    : new THREE.DirectionalLight(0xfff0d0, 2.0);
+  sun.position.set(night ? 14 : -16, night ? 24 : 28, night ? -18 : -12);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -12;
+  sun.shadow.camera.right = 12;
+  sun.shadow.camera.top = 34;
+  sun.shadow.camera.bottom = -34;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 70;
+  sun.shadow.bias = -0.0004;
+  root.add(sun);
 
   // Ground — cracked, stained asphalt
   const asphalt = asphaltTextures(4, 14);
@@ -66,12 +88,12 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   );
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
-  scene.add(ground);
+  root.add(ground);
 
-  // Rain puddles — near-mirror surfaces that catch the neon
+  // Rain puddles — catch the neon at night, the sky by day
   const puddleMat = new THREE.MeshStandardMaterial({
-    color: 0x232c40,
-    roughness: 0.12,
+    color: night ? 0x232c40 : 0x8095b3,
+    roughness: night ? 0.12 : 0.08,
     metalness: 0.55,
   });
   for (const [x, z, r] of [
@@ -85,16 +107,16 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     puddle.rotation.x = -Math.PI / 2;
     puddle.position.set(x, 0.012, z);
     puddle.scale.x = 1.5;
-    scene.add(puddle);
+    root.add(puddle);
   }
 
-  // Brick buildings
+  // Brick buildings — Vilnius old-town ochre and faded rose
   const brickA = new THREE.MeshStandardMaterial({
-    map: brickTexture(10, 2, 14, 26, 26),
+    map: brickTexture(10, 2, 30, 34, night ? 30 : 42),
     roughness: 0.95,
   });
   const brickB = new THREE.MeshStandardMaterial({
-    map: brickTexture(10, 2, 250, 8, 22),
+    map: brickTexture(10, 2, 4, 22, night ? 26 : 38),
     roughness: 0.95,
   });
   const sideWallGeo = new THREE.BoxGeometry(1, 12, ALLEY_HALF_LENGTH * 2 + 2);
@@ -109,22 +131,22 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   farWall.position.set(0, 6, ALLEY_HALF_LENGTH + 0.5);
   for (const wall of [leftWall, rightWall, nearWall, farWall]) {
     wall.receiveShadow = true;
-    scene.add(wall);
+    root.add(wall);
   }
 
-  // Windows — some lit warm, most dark and dead
+  // Windows — warm lamps behind some at night; dead sky-glass by day
   const windowGeo = new THREE.BoxGeometry(0.12, 1.2, 0.9);
   const frameGeo = new THREE.BoxGeometry(0.14, 1.4, 1.1);
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x1b1712, roughness: 0.9 });
   for (let i = 0; i < 16; i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    const lit = Math.random() < 0.35;
+    const lit = night && Math.random() < 0.35;
     const mat = new THREE.MeshStandardMaterial({
-      color: 0x0d0d10,
-      emissive: lit ? 0xcf9a4a : 0x11131c,
+      color: night ? 0x0d0d10 : 0x36414f,
+      emissive: lit ? 0xcf9a4a : night ? 0x11131c : 0x000000,
       emissiveIntensity: lit ? 0.9 : 0.25,
-      roughness: 0.3,
-      metalness: 0.4,
+      roughness: night ? 0.3 : 0.12,
+      metalness: night ? 0.4 : 0.7,
     });
     const x = side * (ALLEY_HALF_WIDTH - 0.02);
     const y = 3.6 + (i % 3) * 2.6;
@@ -132,13 +154,18 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     const frame = new THREE.Mesh(frameGeo, frameMat);
     frame.position.set(x, y, z);
     const pane = new THREE.Mesh(windowGeo, mat);
-    pane.position.set(side * (ALLEY_HALF_WIDTH - 0.0), y, z);
-    scene.add(frame, pane);
+    pane.position.set(side * ALLEY_HALF_WIDTH, y, z);
+    root.add(frame, pane);
   }
 
-  const flickerItems: { obj: THREE.PointLight | THREE.MeshBasicMaterial; base: number; phase: number; neon: boolean }[] = [];
+  const flickerItems: {
+    obj: THREE.PointLight | THREE.MeshBasicMaterial;
+    base: number;
+    phase: number;
+    neon: boolean;
+  }[] = [];
 
-  // Neon signs (tone-mapping bypassed so bloom makes them scream)
+  // Neon bar signs — screaming at night, switched-off glass by day
   const addNeon = (
     text: string,
     cssColor: string,
@@ -151,23 +178,34 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
       map: neonTexture(text, cssColor),
       transparent: true,
       side: THREE.DoubleSide,
+      opacity: night ? 1 : 0.45,
     });
-    mat.toneMapped = false;
+    mat.toneMapped = !night;
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 1.35), mat);
     sign.position.set(x, 4.9, z);
     sign.rotation.y = facing;
-    scene.add(sign);
-    const light = new THREE.PointLight(lightColor, 14, 14, 1.8);
-    light.position.set(x + Math.sin(facing) * 0.8, 4.7, z);
-    scene.add(light);
-    flickerItems.push({ obj: mat, base: 1, phase: Math.random() * 100, neon: true });
-    flickerItems.push({ obj: light, base: 14, phase: Math.random() * 100, neon: true });
+    root.add(sign);
+    if (night) {
+      const light = new THREE.PointLight(lightColor, 14, 14, 1.8);
+      light.position.set(x + Math.sin(facing) * 0.8, 4.7, z);
+      root.add(light);
+      flickerItems.push({ obj: mat, base: 1, phase: Math.random() * 100, neon: true });
+      flickerItems.push({ obj: light, base: 14, phase: Math.random() * 100, neon: true });
+    }
   };
-  addNeon('BAR', '#ff2d78', 0xff2d78, -(ALLEY_HALF_WIDTH - 0.05), -8, Math.PI / 2);
-  addNeon('LIQUOR', '#2dffc8', 0x2dffc8, ALLEY_HALF_WIDTH - 0.05, 14, -Math.PI / 2);
+  addNeon('BARAS', '#ff2d78', 0xff2d78, -(ALLEY_HALF_WIDTH - 0.05), -8, Math.PI / 2);
+  addNeon('ALUS', '#2dffc8', 0x2dffc8, ALLEY_HALF_WIDTH - 0.05, 14, -Math.PI / 2);
 
   // Graffiti + torn posters on the walls
-  const addDecal = (canvasDraw: (ctx: CanvasRenderingContext2D) => void, w: number, h: number, x: number, y: number, z: number, facing: number) => {
+  const addDecal = (
+    canvasDraw: (ctx: CanvasRenderingContext2D) => void,
+    w: number,
+    h: number,
+    x: number,
+    y: number,
+    z: number,
+    facing: number,
+  ) => {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 128;
@@ -180,10 +218,10 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     );
     decal.position.set(x, y, z);
     decal.rotation.y = facing;
-    scene.add(decal);
+    root.add(decal);
   };
-  const spray = (text: string, color: string) => (ctx: CanvasRenderingContext2D) => {
-    ctx.font = '900 64px system-ui, sans-serif';
+  const spray = (text: string, color: string, size = 64) => (ctx: CanvasRenderingContext2D) => {
+    ctx.font = `900 ${size}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.shadowColor = color;
@@ -195,9 +233,9 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     ctx.fillText(text, 0, 0);
     ctx.restore();
   };
-  addDecal(spray('CHEERS', '#c33fd4'), 3.4, 1.7, -(ALLEY_HALF_WIDTH - 0.04), 2.2, 8, Math.PI / 2);
-  addDecal(spray('HIC!', '#4ad46a'), 2.4, 1.2, ALLEY_HALF_WIDTH - 0.04, 1.9, -16, -Math.PI / 2);
-  addDecal(spray('ONE MORE', '#d4a53f'), 3.2, 1.6, ALLEY_HALF_WIDTH - 0.04, 2.4, 26, -Math.PI / 2);
+  addDecal(spray('Į SVEIKATĄ!', '#c33fd4', 44), 3.4, 1.7, -(ALLEY_HALF_WIDTH - 0.04), 2.2, 8, Math.PI / 2);
+  addDecal(spray('ŽALGIRIS', '#4ad46a', 52), 2.8, 1.4, ALLEY_HALF_WIDTH - 0.04, 1.9, -16, -Math.PI / 2);
+  addDecal(spray('LIETUVA', '#d4a53f', 54), 3.2, 1.6, ALLEY_HALF_WIDTH - 0.04, 2.4, 26, -Math.PI / 2);
   const poster = (base: string) => (ctx: CanvasRenderingContext2D) => {
     ctx.fillStyle = base;
     ctx.fillRect(10, 6, 236, 116);
@@ -208,6 +246,46 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   };
   addDecal(poster('#7d2f2f'), 1.3, 0.9, -(ALLEY_HALF_WIDTH - 0.04), 2.6, -14, Math.PI / 2);
   addDecal(poster('#2f4d7d'), 1.2, 0.85, -(ALLEY_HALF_WIDTH - 0.04), 1.8, 17, Math.PI / 2);
+
+  // Lithuanian tricolor hanging off the left wall
+  const flagPole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.035, 0.035, 1.9, 8),
+    new THREE.MeshStandardMaterial({ color: 0x4a3b28, roughness: 0.7 }),
+  );
+  flagPole.position.set(-(ALLEY_HALF_WIDTH - 0.6), 6.1, -2);
+  flagPole.rotation.z = -0.9;
+  root.add(flagPole);
+  const stripeColors = [0xfdb913, 0x006a44, 0xc1272d];
+  stripeColors.forEach((color, i) => {
+    const stripe = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 0.32),
+      new THREE.MeshStandardMaterial({ color, roughness: 0.85, side: THREE.DoubleSide }),
+    );
+    stripe.position.set(-(ALLEY_HALF_WIDTH - 1.55), 6.55 - i * 0.32, -1.98);
+    stripe.rotation.y = Math.PI / 2 - 0.25;
+    root.add(stripe);
+  });
+
+  // Basketball hoop on the far wall — šis kiemas gyvena krepšiniu
+  const backboard = new THREE.Mesh(
+    new THREE.BoxGeometry(1.5, 1.05, 0.07),
+    new THREE.MeshStandardMaterial({ color: 0xcfc8b8, roughness: 0.8 }),
+  );
+  backboard.position.set(1.5, 3.6, ALLEY_HALF_LENGTH - 0.05);
+  const boardSquare = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.6, 0.45),
+    new THREE.MeshStandardMaterial({ color: 0x8a2f26, roughness: 0.8 }),
+  );
+  boardSquare.position.set(1.5, 3.5, ALLEY_HALF_LENGTH - 0.1);
+  boardSquare.rotation.y = Math.PI;
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.26, 0.03, 8, 20),
+    new THREE.MeshStandardMaterial({ color: 0xd35b2a, roughness: 0.4, metalness: 0.6 }),
+  );
+  rim.position.set(1.5, 3.18, ALLEY_HALF_LENGTH - 0.38);
+  rim.rotation.x = Math.PI / 2;
+  backboard.castShadow = true;
+  root.add(backboard, boardSquare, rim);
 
   // Fire escape on the right wall
   const metal = new THREE.MeshStandardMaterial({ color: 0x1e2126, roughness: 0.6, metalness: 0.7 });
@@ -228,7 +306,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   fe.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
-  scene.add(fe);
+  root.add(fe);
 
   // AC units dripping down the walls
   const acMat = new THREE.MeshStandardMaterial({ color: 0x3c4148, roughness: 0.5, metalness: 0.6 });
@@ -238,7 +316,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     const ac = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 1), acMat);
     ac.position.set(side * (ALLEY_HALF_WIDTH - 0.35), y, z);
     ac.castShadow = true;
-    scene.add(ac);
+    root.add(ac);
   }
 
   // Power cables sagging across the alley, with hanging bulbs
@@ -252,17 +330,17 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
       new THREE.TubeGeometry(curve, 20, 0.025, 5),
       new THREE.MeshStandardMaterial({ color: 0x0c0c0e, roughness: 0.7 }),
     );
-    scene.add(cable);
+    root.add(cable);
     const bulb = new THREE.Mesh(
       new THREE.SphereGeometry(0.09, 8, 8),
       new THREE.MeshStandardMaterial({
         color: 0x332211,
         emissive: 0xffcf8a,
-        emissiveIntensity: 2.2,
+        emissiveIntensity: night ? 2.2 : 0.05,
       }),
     );
     bulb.position.set(0, 6.15, z + 0.6);
-    scene.add(bulb);
+    root.add(bulb);
   }
 
   const obstacles: Obstacle[] = [];
@@ -275,7 +353,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
         o.receiveShadow = true;
       }
     });
-    scene.add(mesh);
+    root.add(mesh);
     obstacles.push({ x, z, hx, hz });
   };
 
@@ -344,7 +422,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     bag.scale.y = 0.7;
     bag.rotation.y = x * 7.3;
     bag.castShadow = true;
-    scene.add(bag);
+    root.add(bag);
   }
 
   // Scattered litter
@@ -361,10 +439,10 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     );
     litter.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI);
     litter.position.set(-7 + Math.random() * 14, 0.02, -28 + Math.random() * 56);
-    scene.add(litter);
+    root.add(litter);
   }
 
-  // Flickering wall lamps with cone shades
+  // Wall lamps with cone shades — flickering at night, off by day
   const lampShadeMat = new THREE.MeshStandardMaterial({ color: 0x22252c, roughness: 0.5, metalness: 0.7 });
   for (const [x, z] of [
     [-7.6, -20], [7.6, -10], [-7.6, 2], [7.6, 12], [-7.6, 24],
@@ -373,16 +451,22 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
     shade.position.set(x, 4.45, z);
     const bulb = new THREE.Mesh(
       new THREE.SphereGeometry(0.13, 10, 8),
-      new THREE.MeshStandardMaterial({ color: 0x332211, emissive: 0xffb066, emissiveIntensity: 2.6 }),
+      new THREE.MeshStandardMaterial({
+        color: 0x332211,
+        emissive: 0xffb066,
+        emissiveIntensity: night ? 2.6 : 0,
+      }),
     );
     bulb.position.set(x, 4.28, z);
     const arm = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.06), lampShadeMat);
     arm.position.set(x + (x < 0 ? -0.35 : 0.35), 4.62, z);
-    scene.add(shade, bulb, arm);
-    const light = new THREE.PointLight(0xffb066, 34, 22, 1.8);
-    light.position.set(x * 0.9, 4.1, z);
-    scene.add(light);
-    flickerItems.push({ obj: light, base: 34, phase: Math.random() * 100, neon: false });
+    root.add(shade, bulb, arm);
+    if (night) {
+      const light = new THREE.PointLight(0xffb066, 34, 22, 1.8);
+      light.position.set(x * 0.9, 4.1, z);
+      root.add(light);
+      flickerItems.push({ obj: light, base: 34, phase: Math.random() * 100, neon: false });
+    }
   }
 
   const steamVents: Vec3[] = [
@@ -393,7 +477,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   for (const v of steamVents) {
     const grate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.9), ventMat);
     grate.position.set(v[0], 0.06, v[2]);
-    scene.add(grate);
+    root.add(grate);
   }
 
   const margin = 0.8;
@@ -405,6 +489,7 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
   };
 
   return {
+    mode,
     obstacles,
     bounds,
     steamVents,
@@ -425,6 +510,20 @@ export function buildScene(scene: THREE.Scene, renderer: THREE.WebGLRenderer): W
         if (item.obj instanceof THREE.PointLight) item.obj.intensity = item.base * k;
         else item.obj.opacity = k;
       }
+    },
+    dispose() {
+      scene.remove(root);
+      root.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry.dispose();
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          for (const mat of mats) {
+            if ('map' in mat && mat.map instanceof THREE.Texture) mat.map.dispose();
+            mat.dispose();
+          }
+        }
+      });
+      envTexture.dispose();
     },
   };
 }

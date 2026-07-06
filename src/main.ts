@@ -17,7 +17,7 @@ import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
 import { ClientRoom, HostRoom } from './net/peer';
-import type { BottleKind, Phase, Vec3, WorldState } from './net/network';
+import type { BottleKind, Phase, SceneMode, Vec3, WorldState } from './net/network';
 
 // --- Renderer / scene ---------------------------------------------------
 
@@ -34,8 +34,19 @@ try {
   }
   throw new Error('WebGL unavailable');
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
-renderer.shadowMap.enabled = true;
+
+// Software rasterizers (SwiftShader, llvmpipe…) can't afford bloom and
+// shadows — drop to lo-fi automatically there. ?fx=hi / ?fx=lo overrides.
+const gl = renderer.getContext();
+const dbgInfo = gl.getExtension('WEBGL_debug_renderer_info');
+const glName = dbgInfo ? String(gl.getParameter(dbgInfo.UNMASKED_RENDERER_WEBGL)) : '';
+const fxParam = new URLSearchParams(location.search).get('fx');
+const lofi =
+  fxParam === 'lo' ||
+  (fxParam !== 'hi' && /swiftshader|llvmpipe|software|softpipe/i.test(glName));
+
+renderer.setPixelRatio(lofi ? 1 : Math.min(window.devicePixelRatio, 1.75));
+renderer.shadowMap.enabled = !lofi;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
@@ -45,7 +56,8 @@ const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.62);
+// Day values; setMode() swaps to punchier night bloom
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.9);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -58,11 +70,23 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const world = buildScene(scene, renderer);
-const rain = new Rain(scene);
-const steams = world.steamVents.map((vent) => new Steam(scene, vent));
+let world = buildScene(scene, renderer, 'day');
+let rain: Rain | null = null; // night-only
+let steams = world.steamVents.map((vent) => new Steam(scene, vent));
 const pickupFX = new PickupFX(scene);
 const hud = new HUD();
+
+function setMode(mode: SceneMode) {
+  if (world.mode === mode) return;
+  world.dispose();
+  for (const steam of steams) steam.dispose();
+  rain?.dispose();
+  world = buildScene(scene, renderer, mode);
+  steams = world.steamVents.map((vent) => new Steam(scene, vent));
+  rain = mode === 'night' && !lofi ? new Rain(scene) : null;
+  bloom.strength = mode === 'night' ? 0.55 : 0.3;
+  bloom.threshold = mode === 'night' ? 0.62 : 0.9;
+}
 
 // --- Input ----------------------------------------------------------------
 
@@ -159,9 +183,9 @@ function enterRoom(colorIndex: number, name: string, code: string, isHost: boole
   hud.showLobby(code, isHost);
 }
 
-async function createRoom(name: string) {
+async function createRoom(name: string, mode: SceneMode) {
   const room = await HostRoom.create();
-  const sim = new HostSim(() => randomFreePos(world), room.myId, name);
+  const sim = new HostSim(() => randomFreePos(world), room.myId, name, mode);
   room.onJoin = (id, joinName) => {
     const colorIndex = sim.addPlayer(id, joinName);
     if (colorIndex !== null) hud.updateLobby(sim.state.players);
@@ -186,8 +210,12 @@ async function joinRoom(code: string, name: string) {
     latestState = state;
   };
   room.onClosed = (reason) => {
-    alert(reason);
-    location.reload();
+    // No alert(): it blocks the page (and JS timers) until dismissed
+    const notice = document.createElement('div');
+    notice.className = 'panel';
+    notice.innerHTML = `<h2>🍻 ${reason}</h2><p class="tag">Heading back to the menu…</p>`;
+    document.getElementById('ui')!.append(notice);
+    setTimeout(() => location.reload(), 2500);
   };
   setInterval(() => {
     room.sendPos([local.pos.x, 0, local.pos.z], local.ry, local.moving);
@@ -195,10 +223,10 @@ async function joinRoom(code: string, name: string) {
   enterRoom(room.colorIndex, name, code, false);
 }
 
-hud.onCreate = async (name) => {
+hud.onCreate = async (name, mode) => {
   hud.setBusy(true, 'Opening the alley…');
   try {
-    await createRoom(name);
+    await createRoom(name, mode);
   } catch {
     hud.setBusy(false);
     hud.menuError('Could not create a room — check your connection and retry');
@@ -225,6 +253,7 @@ hud.onAgain = () => host?.sim.startRound();
 // --- World state → scene -----------------------------------------------------
 
 function applyState(state: WorldState, t: number) {
+  setMode(state.mode);
   if (state.phase !== lastPhase) {
     onPhaseChange(state);
     lastPhase = state.phase;
@@ -322,7 +351,7 @@ renderer.setAnimationLoop(() => {
   const t = now / 1000;
 
   world.updateFlicker(t);
-  rain.update(dt);
+  rain?.update(dt);
   for (const steam of steams) steam.update(dt);
   pickupFX.update(dt);
 
@@ -354,5 +383,6 @@ renderer.setAnimationLoop(() => {
     avatar.update(dt, t);
   }
 
-  composer.render();
+  if (lofi) renderer.render(scene, camera);
+  else composer.render();
 });

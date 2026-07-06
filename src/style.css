@@ -108,6 +108,24 @@ input:focus {
   border-color: #ffb066;
 }
 
+select {
+  background: #1a1a26;
+  border: 1px solid #3a3a4c;
+  border-radius: 8px;
+  color: #f2ecdd;
+  font-size: 15px;
+  padding: 10px 12px;
+  outline: none;
+  width: 100%;
+  margin-bottom: 12px;
+  text-align: center;
+  cursor: pointer;
+}
+
+select:focus {
+  border-color: #ffb066;
+}
+
 #code-input {
   width: 90px;
   margin-bottom: 0;

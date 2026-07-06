@@ -25,7 +25,7 @@ export class Rain {
   private points: THREE.Points;
   private positions: Float32Array;
 
-  constructor(scene: THREE.Scene) {
+  constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(RAIN_COUNT * 3);
     for (let i = 0; i < RAIN_COUNT; i++) {
       this.positions[i * 3] = -9 + Math.random() * 18;
@@ -60,6 +60,12 @@ export class Rain {
     }
     this.points.geometry.attributes.position.needsUpdate = true;
   }
+
+  dispose() {
+    this.scene.remove(this.points);
+    this.points.geometry.dispose();
+    (this.points.material as THREE.Material).dispose();
+  }
 }
 
 interface SteamPuff {
@@ -71,7 +77,7 @@ interface SteamPuff {
 export class Steam {
   private puffs: SteamPuff[] = [];
 
-  constructor(scene: THREE.Scene, private origin: Vec3, count = 6) {
+  constructor(private scene: THREE.Scene, private origin: Vec3, count = 6) {
     for (let i = 0; i < count; i++) {
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -101,6 +107,14 @@ export class Steam {
       puff.sprite.scale.set(s, s, 1);
       (puff.sprite.material as THREE.SpriteMaterial).opacity = Math.sin(Math.PI * k) * 0.16;
     }
+  }
+
+  dispose() {
+    for (const puff of this.puffs) {
+      this.scene.remove(puff.sprite);
+      puff.sprite.material.dispose();
+    }
+    this.puffs = [];
   }
 }
 

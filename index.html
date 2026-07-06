@@ -15,8 +15,12 @@
     <div id="ui">
       <div id="menu" class="panel">
         <h1>🍺 Drunk Alley Dash</h1>
-        <p class="tag">Stagger around a filthy alley. Grab more booze than your mates. Up to 4 players.</p>
+        <p class="tag">Stagger around a filthy Vilnius alley. Grab more booze than your mates. Up to 4 players.</p>
         <input id="name-input" maxlength="12" placeholder="Your nickname" autocomplete="off" />
+        <select id="mode-select" title="Time of day (host's choice applies to everyone)">
+          <option value="day">☀️ Day in Vilnius</option>
+          <option value="night">🌙 Night in Vilnius</option>
+        </select>
         <div class="row">
           <button id="create-btn">Create room</button>
           <span class="or">or</span>
@@ -43,7 +47,7 @@
       <div id="hud" class="hidden">
         <div id="timer"></div>
         <div id="scores"></div>
-        <div id="help">W/S move &nbsp; A/D turn &nbsp;·&nbsp; 🍺 beer +1 &nbsp; 🍷 wine +2 &nbsp; 🥃 vodka +3</div>
+        <div id="help">W/S move &nbsp; A/D turn &nbsp;·&nbsp; 🍺 alus +1 &nbsp; 🍷 vynas +2 &nbsp; 🥃 degtinė +3</div>
       </div>
 
       <div id="end" class="panel hidden">

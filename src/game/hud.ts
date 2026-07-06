@@ -1,4 +1,4 @@
-import type { PlayerState } from '../net/network';
+import type { PlayerState, SceneMode } from '../net/network';
 import { PLAYER_COLORS } from './player';
 
 const cssColor = (colorIndex: number) =>
@@ -7,7 +7,7 @@ const cssColor = (colorIndex: number) =>
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 export class HUD {
-  onCreate: (name: string) => void = () => {};
+  onCreate: (name: string, mode: SceneMode) => void = () => {};
   onJoin: (code: string, name: string) => void = () => {};
   onStart: () => void = () => {};
   onAgain: () => void = () => {};
@@ -19,13 +19,16 @@ export class HUD {
   private nameInput = $<HTMLInputElement>('name-input');
   private codeInput = $<HTMLInputElement>('code-input');
   private createBtn = $<HTMLButtonElement>('create-btn');
+  private modeSelect = $<HTMLSelectElement>('mode-select');
   private joinBtn = $<HTMLButtonElement>('join-btn');
   private startBtn = $<HTMLButtonElement>('start-btn');
   private againBtn = $<HTMLButtonElement>('again-btn');
   private isHost = false;
 
   constructor() {
-    this.createBtn.addEventListener('click', () => this.onCreate(this.playerName()));
+    this.createBtn.addEventListener('click', () =>
+      this.onCreate(this.playerName(), this.modeSelect.value as SceneMode),
+    );
     this.joinBtn.addEventListener('click', () =>
       this.onJoin(this.codeInput.value.toUpperCase().trim(), this.playerName()),
     );

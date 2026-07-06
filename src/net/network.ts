@@ -10,6 +10,8 @@ export const BOTTLE_POINTS: Record<BottleKind, number> = {
 
 export type Phase = 'lobby' | 'play' | 'end';
 
+export type SceneMode = 'day' | 'night';
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -29,6 +31,7 @@ export interface BottleState {
 
 export interface WorldState {
   phase: Phase;
+  mode: SceneMode;
   timeLeft: number;
   players: PlayerState[];
   bottles: BottleState[];

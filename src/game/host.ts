@@ -2,6 +2,7 @@ import type {
   BottleKind,
   BottleState,
   PlayerState,
+  SceneMode,
   Vec3,
   WorldState,
 } from '../net/network';
@@ -45,9 +46,11 @@ export class HostSim {
     private randomPos: () => Vec3,
     hostId: string,
     hostName: string,
+    mode: SceneMode,
   ) {
     this.state = {
       phase: 'lobby',
+      mode,
       timeLeft: ROUND_SECONDS,
       players: [makePlayer(hostId, hostName, 0)],
       bottles: [],
