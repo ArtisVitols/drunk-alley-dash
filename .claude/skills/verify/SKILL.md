@@ -32,9 +32,10 @@ driver script (2 browsers, create/join room, start round, keyboard movement,
 scoring, disconnect probe) existed at `scratchpad/drive.mjs` in session
 a00b27b8; recreate from this outline if gone:
 
-1. Browser A: load page, set `#name-input`, click `#create-btn`, read the
-   room code from `#room-code` once `#lobby` unhides (PeerJS cloud broker —
-   needs internet, takes a few seconds).
+1. Browser A: load page, set `#name-input` (optionally `#mode-select` to
+   `night` — default is `day`; the host's choice must sync to joiners),
+   click `#create-btn`, read the room code from `#room-code` once `#lobby`
+   unhides (PeerJS cloud broker — needs internet, takes a few seconds).
 2. Browser B: set `#code-input` to that code, click `#join-btn`; both
    `#player-list`s show 2 entries.
 3. A clicks `#start-btn`; both pages: `#hud` unhides, `#timer` shows `2:00`,
@@ -58,3 +59,6 @@ a00b27b8; recreate from this outline if gone:
   timeout, not a code bug. Retry before concluding FAIL.
 - `pkill -f` with any pattern that appears in your own compound command kills
   your own shell (exit 144). Use `pkill -x`.
+- Two SwiftShader browsers contend for CPU; if states stall >8 s the client's
+  heartbeat shows a "lost connection" notice. Rare flake — retry before
+  concluding FAIL. (Never reintroduce `alert()` for this: it blocks the page.)

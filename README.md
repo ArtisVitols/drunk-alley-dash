@@ -1,8 +1,12 @@
 # 🍺 Drunk Alley Dash
 
 A 3D multiplayer browser game for up to 4 players. Drunk guys stagger around a
-dirty night alley and compete to grab the most booze before the 2-minute timer
-runs out. Beer 🍺 is worth 1 point, wine 🍷 is 2, vodka 🥃 is 3.
+dirty Vilnius back alley and compete to grab the most booze before the 2-minute
+timer runs out. Alus 🍺 is worth 1 point, vynas 🍷 is 2, degtinė 🥃 is 3.
+
+When creating a room the host picks the time of day — a bright Baltic
+afternoon (default) or the neon-lit night — and every joiner gets the same
+scene. Į sveikatą!
 
 Built with [Three.js](https://threejs.org/) + [Vite](https://vitejs.dev/).
 Multiplayer is peer-to-peer over WebRTC ([PeerJS](https://peerjs.com/)) — one
