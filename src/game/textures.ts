@@ -104,6 +104,62 @@ export function brickTexture(repeatX: number, repeatY: number, hue: number, sat:
   return toTexture(canvas, repeatX, repeatY);
 }
 
+// City building facade: plaster/brick base with a grid of windows.
+// At night a fraction of windows glow warm.
+export function facadeTexture(hue: number, sat: number, light: number, litProb: number) {
+  const { canvas, ctx } = makeCanvas();
+  ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Weathering blotches
+  for (let i = 0; i < 12; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 30 + Math.random() * 90;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(20,16,12,${0.08 + Math.random() * 0.14})`);
+    g.addColorStop(1, 'rgba(20,16,12,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+
+  // Window grid
+  const cols = 6;
+  const rows = 7;
+  const cw = 512 / cols;
+  const ch = 512 / rows;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const wx = col * cw + cw * 0.22;
+      const wy = row * ch + ch * 0.2;
+      const ww = cw * 0.56;
+      const wh = ch * 0.58;
+      // frame
+      ctx.fillStyle = 'rgba(30,26,22,0.9)';
+      ctx.fillRect(wx - 3, wy - 3, ww + 6, wh + 6);
+      const lit = Math.random() < litProb;
+      ctx.fillStyle = lit
+        ? `hsl(${38 + Math.random() * 14}, 75%, ${52 + Math.random() * 14}%)`
+        : `hsl(220, 18%, ${8 + Math.random() * 9}%)`;
+      ctx.fillRect(wx, wy, ww, wh);
+      if (!lit) {
+        // sky glint on dead glass
+        ctx.fillStyle = 'rgba(160,180,210,0.18)';
+        ctx.fillRect(wx, wy, ww, wh * 0.28);
+      }
+    }
+  }
+
+  // Street-level grime
+  const grime = ctx.createLinearGradient(0, 380, 0, 512);
+  grime.addColorStop(0, 'rgba(8,8,10,0)');
+  grime.addColorStop(1, 'rgba(8,8,10,0.55)');
+  ctx.fillStyle = grime;
+  ctx.fillRect(0, 380, 512, 132);
+
+  return toTexture(canvas, 1, 1);
+}
+
 export function neonTexture(text: string, color: string) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;

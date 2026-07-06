@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { SceneMode, Vec3 } from '../net/network';
-import { asphaltTextures, brickTexture, neonTexture } from './textures';
+import { asphaltTextures, brickTexture, facadeTexture, neonTexture } from './textures';
 
 export interface Obstacle {
   x: number;
@@ -29,6 +29,19 @@ export interface WorldGeom {
 const ALLEY_HALF_WIDTH = 8;
 const ALLEY_HALF_LENGTH = 30;
 
+// The alley opens at +z onto a small drivable city: a 2x2 grid of
+// building blocks separated by streets, ringed by a perimeter wall.
+const CITY_HALF_WIDTH = 45;
+const CITY_MAX_Z = 120;
+// Block centers/half-sizes (also their collision AABBs)
+const CITY_BLOCKS: { x: number; z: number; h: number }[] = [
+  { x: -20, z: 54.5, h: 11 },
+  { x: 20, z: 54.5, h: 14 },
+  { x: -20, z: 95.5, h: 13 },
+  { x: 20, z: 95.5, h: 10 },
+];
+const BLOCK_HALF = 14;
+
 // Builds the whole alley for one time-of-day into a disposable group,
 // so the host's day/night choice can swap the environment live while
 // players, bottles and FX (added directly to the scene) survive.
@@ -43,8 +56,8 @@ export function buildScene(
 
   scene.background = new THREE.Color(night ? 0x07070d : 0x9fb6d8);
   scene.fog = night
-    ? new THREE.FogExp2(0x07070d, 0.024)
-    : new THREE.FogExp2(0xa8b8cc, 0.011);
+    ? new THREE.FogExp2(0x07070d, 0.019)
+    : new THREE.FogExp2(0xa8b8cc, 0.009);
 
   // Subtle image-based lighting so materials get specular life
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -63,22 +76,23 @@ export function buildScene(
   const sun = night
     ? new THREE.DirectionalLight(0x7484b8, 0.55)
     : new THREE.DirectionalLight(0xfff0d0, 2.0);
-  sun.position.set(night ? 14 : -16, night ? 24 : 28, night ? -18 : -12);
+  sun.position.set(night ? 14 : -16, night ? 26 : 30, (night ? -18 : -12) + 45);
+  sun.target.position.set(0, 0, 45);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -12;
-  sun.shadow.camera.right = 12;
-  sun.shadow.camera.top = 34;
-  sun.shadow.camera.bottom = -34;
+  sun.shadow.camera.left = -55;
+  sun.shadow.camera.right = 55;
+  sun.shadow.camera.top = 85;
+  sun.shadow.camera.bottom = -85;
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 70;
+  sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0004;
-  root.add(sun);
+  root.add(sun, sun.target);
 
-  // Ground — cracked, stained asphalt
-  const asphalt = asphaltTextures(4, 14);
+  // Ground — cracked, stained asphalt covering alley + city
+  const asphalt = asphaltTextures(6, 10);
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(ALLEY_HALF_WIDTH * 2, ALLEY_HALF_LENGTH * 2),
+    new THREE.PlaneGeometry(CITY_HALF_WIDTH * 2 + 2, CITY_MAX_Z + ALLEY_HALF_LENGTH + 2),
     new THREE.MeshStandardMaterial({
       map: asphalt.map,
       bumpMap: asphalt.bumpMap,
@@ -87,6 +101,7 @@ export function buildScene(
     }),
   );
   ground.rotation.x = -Math.PI / 2;
+  ground.position.set(0, 0, (CITY_MAX_Z - ALLEY_HALF_LENGTH) / 2);
   ground.receiveShadow = true;
   root.add(ground);
 
@@ -110,7 +125,9 @@ export function buildScene(
     root.add(puddle);
   }
 
-  // Brick buildings — Vilnius old-town ochre and faded rose
+  const obstacles: Obstacle[] = [];
+
+  // Brick for the alley's inner faces — Vilnius old-town ochre and rose
   const brickA = new THREE.MeshStandardMaterial({
     map: brickTexture(10, 2, 30, 34, night ? 30 : 42),
     roughness: 0.95,
@@ -119,19 +136,141 @@ export function buildScene(
     map: brickTexture(10, 2, 4, 22, night ? 26 : 38),
     roughness: 0.95,
   });
-  const sideWallGeo = new THREE.BoxGeometry(1, 12, ALLEY_HALF_LENGTH * 2 + 2);
-  const leftWall = new THREE.Mesh(sideWallGeo, brickA);
-  leftWall.position.set(-(ALLEY_HALF_WIDTH + 0.5), 6, 0);
-  const rightWall = new THREE.Mesh(sideWallGeo, brickB);
-  rightWall.position.set(ALLEY_HALF_WIDTH + 0.5, 6, 0);
-  const endWallGeo = new THREE.BoxGeometry(ALLEY_HALF_WIDTH * 2 + 2, 12, 1);
-  const nearWall = new THREE.Mesh(endWallGeo, brickB);
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x23211e, roughness: 0.95 });
+  const litProb = night ? 0.3 : 0;
+
+  // Two massive buildings flank the alley (their inner faces are the
+  // alley walls); the far end between them is open — the way out to
+  // the city.
+  const fillerW = CITY_HALF_WIDTH - ALLEY_HALF_WIDTH; // 37
+  const fillerGeo = new THREE.BoxGeometry(fillerW, 12, ALLEY_HALF_LENGTH * 2 + 1);
+  for (const side of [-1, 1] as const) {
+    const facade = new THREE.MeshStandardMaterial({
+      map: facadeTexture(side < 0 ? 36 : 8, 30, night ? 30 : 44, litProb),
+      roughness: 0.9,
+    });
+    facade.map!.repeat.set(2, 1);
+    // px, nx, py, ny, pz, nz — inner alley face gets brick
+    const mats =
+      side < 0
+        ? [brickA, facade, roofMat, roofMat, facade, facade]
+        : [facade, brickB, roofMat, roofMat, facade, facade];
+    const filler = new THREE.Mesh(fillerGeo, mats);
+    const cx = side * (ALLEY_HALF_WIDTH + fillerW / 2);
+    filler.position.set(cx, 6, 0);
+    filler.receiveShadow = true;
+    filler.castShadow = true;
+    root.add(filler);
+    obstacles.push({ x: cx, z: 0, hx: fillerW / 2, hz: ALLEY_HALF_LENGTH + 0.5 });
+  }
+
+  // Closed alley end (basketball wall)
+  const nearWall = new THREE.Mesh(
+    new THREE.BoxGeometry(ALLEY_HALF_WIDTH * 2 + 2, 12, 1),
+    brickB,
+  );
   nearWall.position.set(0, 6, -(ALLEY_HALF_LENGTH + 0.5));
-  const farWall = new THREE.Mesh(endWallGeo, brickA);
-  farWall.position.set(0, 6, ALLEY_HALF_LENGTH + 0.5);
-  for (const wall of [leftWall, rightWall, nearWall, farWall]) {
+  nearWall.receiveShadow = true;
+  root.add(nearWall);
+
+  // City blocks — one building per block, Vilnius pastel facades
+  const blockHues = [36, 205, 10, 48];
+  CITY_BLOCKS.forEach((block, i) => {
+    const facade = new THREE.MeshStandardMaterial({
+      map: facadeTexture(blockHues[i], i === 1 ? 10 : 32, night ? 32 : 48, litProb),
+      roughness: 0.9,
+    });
+    facade.map!.repeat.set(2, 1);
+    const building = new THREE.Mesh(
+      new THREE.BoxGeometry(BLOCK_HALF * 2, block.h, BLOCK_HALF * 2),
+      [facade, facade, roofMat, roofMat, facade, facade],
+    );
+    building.position.set(block.x, block.h / 2, block.z);
+    building.castShadow = true;
+    building.receiveShadow = true;
+    root.add(building);
+    obstacles.push({ x: block.x, z: block.z, hx: BLOCK_HALF, hz: BLOCK_HALF });
+  });
+
+  // A little white bell tower on one roof — labas, Vilnius
+  const towerBlock = CITY_BLOCKS[3];
+  const tower = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.6, 1.9, 5, 10),
+    new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.85 }),
+  );
+  tower.position.set(towerBlock.x + 8, towerBlock.h + 2.5, towerBlock.z + 8);
+  const towerRoof = new THREE.Mesh(
+    new THREE.ConeGeometry(1.9, 2.2, 10),
+    new THREE.MeshStandardMaterial({ color: 0x8a3b2a, roughness: 0.7 }),
+  );
+  towerRoof.position.set(towerBlock.x + 8, towerBlock.h + 6.1, towerBlock.z + 8);
+  tower.castShadow = true;
+  root.add(tower, towerRoof);
+
+  // Perimeter wall around the city
+  const perimMat = new THREE.MeshStandardMaterial({ color: 0x565a5e, roughness: 0.95 });
+  const sideLen = CITY_MAX_Z - ALLEY_HALF_LENGTH + 1;
+  for (const side of [-1, 1] as const) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(1.2, 3, sideLen), perimMat);
+    wall.position.set(side * (CITY_HALF_WIDTH + 0.6), 1.5, (CITY_MAX_Z + ALLEY_HALF_LENGTH) / 2);
     wall.receiveShadow = true;
     root.add(wall);
+  }
+  const backWall = new THREE.Mesh(
+    new THREE.BoxGeometry(CITY_HALF_WIDTH * 2 + 2.4, 3, 1.2),
+    perimMat,
+  );
+  backWall.position.set(0, 1.5, CITY_MAX_Z + 0.6);
+  backWall.receiveShadow = true;
+  root.add(backWall);
+
+  // Dashed center lines on the streets
+  const dashMat = new THREE.MeshStandardMaterial({ color: 0xc9c9bd, roughness: 0.9 });
+  const dashAlongX = new THREE.PlaneGeometry(1.4, 0.22);
+  const dashAlongZ = new THREE.PlaneGeometry(0.22, 1.4);
+  const addDash = (geo: THREE.PlaneGeometry, x: number, z: number) => {
+    const dash = new THREE.Mesh(geo, dashMat);
+    dash.rotation.x = -Math.PI / 2;
+    dash.position.set(x, 0.015, z);
+    root.add(dash);
+  };
+  for (const z of [35, 75, 115]) {
+    for (let x = -42; x <= 42; x += 5) addDash(dashAlongX, x, z);
+  }
+  for (const x of [-39.9, 0, 39.9]) {
+    const z0 = x === 0 ? 41 : 33;
+    for (let z = z0; z <= 113; z += 5) addDash(dashAlongZ, x, z);
+  }
+
+  // City street lamps (real point lights only at a few corners)
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.6, metalness: 0.6 });
+  const poleGeo = new THREE.CylinderGeometry(0.07, 0.09, 4.6, 8);
+  const headGeo = new THREE.SphereGeometry(0.16, 10, 8);
+  for (const [lx, lz] of [
+    [-6.8, 45], [6.8, 62], [-34.8, 75], [34.8, 75], [-6.8, 88], [6.8, 105], [-20, 40.8], [20, 109.2],
+  ]) {
+    const pole = new THREE.Mesh(poleGeo, poleMat);
+    pole.position.set(lx, 2.3, lz);
+    pole.castShadow = true;
+    const head = new THREE.Mesh(
+      headGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x2a2418,
+        emissive: 0xffd9a0,
+        emissiveIntensity: night ? 2.4 : 0,
+      }),
+    );
+    head.position.set(lx, 4.7, lz);
+    root.add(pole, head);
+  }
+  if (night) {
+    for (const [lx, lz] of [
+      [0, 40], [-20, 75], [20, 75], [0, 110],
+    ]) {
+      const light = new THREE.PointLight(0xffc98a, 55, 34, 1.8);
+      light.position.set(lx, 5.2, lz);
+      root.add(light);
+    }
   }
 
   // Windows — warm lamps behind some at night; dead sky-glass by day
@@ -271,18 +410,17 @@ export function buildScene(
     new THREE.BoxGeometry(1.5, 1.05, 0.07),
     new THREE.MeshStandardMaterial({ color: 0xcfc8b8, roughness: 0.8 }),
   );
-  backboard.position.set(1.5, 3.6, ALLEY_HALF_LENGTH - 0.05);
+  backboard.position.set(1.5, 3.6, -(ALLEY_HALF_LENGTH - 0.05));
   const boardSquare = new THREE.Mesh(
     new THREE.PlaneGeometry(0.6, 0.45),
     new THREE.MeshStandardMaterial({ color: 0x8a2f26, roughness: 0.8 }),
   );
-  boardSquare.position.set(1.5, 3.5, ALLEY_HALF_LENGTH - 0.1);
-  boardSquare.rotation.y = Math.PI;
+  boardSquare.position.set(1.5, 3.5, -(ALLEY_HALF_LENGTH - 0.1));
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(0.26, 0.03, 8, 20),
     new THREE.MeshStandardMaterial({ color: 0xd35b2a, roughness: 0.4, metalness: 0.6 }),
   );
-  rim.position.set(1.5, 3.18, ALLEY_HALF_LENGTH - 0.38);
+  rim.position.set(1.5, 3.18, -(ALLEY_HALF_LENGTH - 0.38));
   rim.rotation.x = Math.PI / 2;
   backboard.castShadow = true;
   root.add(backboard, boardSquare, rim);
@@ -343,7 +481,6 @@ export function buildScene(
     root.add(bulb);
   }
 
-  const obstacles: Obstacle[] = [];
   const addObstacle = (mesh: THREE.Object3D, x: number, z: number, hx: number, hz: number) => {
     mesh.position.x = x;
     mesh.position.z = z;
@@ -482,10 +619,10 @@ export function buildScene(
 
   const margin = 0.8;
   const bounds: Bounds = {
-    minX: -(ALLEY_HALF_WIDTH - margin),
-    maxX: ALLEY_HALF_WIDTH - margin,
+    minX: -(CITY_HALF_WIDTH - margin),
+    maxX: CITY_HALF_WIDTH - margin,
     minZ: -(ALLEY_HALF_LENGTH - margin),
-    maxZ: ALLEY_HALF_LENGTH - margin,
+    maxZ: CITY_MAX_Z - margin,
   };
 
   return {
@@ -531,8 +668,15 @@ export function buildScene(
 export function randomFreePos(geom: WorldGeom): Vec3 {
   const { bounds, obstacles } = geom;
   for (let tries = 0; tries < 60; tries++) {
-    const x = bounds.minX + 0.5 + Math.random() * (bounds.maxX - bounds.minX - 1);
-    const z = bounds.minZ + 0.5 + Math.random() * (bounds.maxZ - bounds.minZ - 1);
+    // 40% of bottles land in the alley so on-foot players near spawn
+    // aren't starved; the rest go to the city streets for the drivers.
+    const inAlley = Math.random() < 0.4;
+    const x = inAlley
+      ? -7 + Math.random() * 14
+      : bounds.minX + 0.5 + Math.random() * (bounds.maxX - bounds.minX - 1);
+    const z = inAlley
+      ? -28 + Math.random() * 56
+      : bounds.minZ + 0.5 + Math.random() * (bounds.maxZ - bounds.minZ - 1);
     let clear = true;
     for (const o of obstacles) {
       if (Math.abs(x - o.x) < o.hx + 0.7 && Math.abs(z - o.z) < o.hz + 0.7) {

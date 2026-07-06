@@ -10,9 +10,11 @@ import {
   LocalController,
   RemoteAvatar,
   applyWobble,
+  collideCircle,
   createPlayerMesh,
 } from './game/player';
 import { BOTTLE_GLOW, createBottleMesh } from './game/pickups';
+import { CarController, RemoteCar, applyCarWobble } from './game/car';
 import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
@@ -52,7 +54,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 220);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -157,8 +159,48 @@ canvas.addEventListener('pointercancel', joyEnd);
 
 if (window.matchMedia('(pointer: coarse)').matches) {
   const help = document.getElementById('help');
-  if (help) help.innerHTML = 'Drag anywhere to stagger around &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
+  if (help) help.innerHTML = 'Drag to stagger &nbsp; 🚗 button for cars &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
 }
+
+// --- Cars: hop in / get out -------------------------------------------------
+
+const carBtn = document.getElementById('car-btn') as HTMLButtonElement;
+
+function nearFreeCar(): boolean {
+  if (!latestState || drivingCar !== null) return false;
+  for (const c of latestState.cars) {
+    if (c.occupant !== null) continue;
+    const dx = local.pos.x - c.p[0];
+    const dz = local.pos.z - c.p[2];
+    if (dx * dx + dz * dz < 3.2 * 3.2) return true;
+  }
+  return false;
+}
+
+function requestCar(enter: boolean) {
+  if (host) host.sim.requestCar(myId, enter);
+  else clientRoom?.sendCar(enter);
+}
+
+function updateCarButton() {
+  if (latestState?.phase === 'play' && drivingCar !== null) {
+    carBtn.textContent = '🚪 Get out';
+    carBtn.classList.remove('hidden');
+  } else if (latestState?.phase === 'play' && nearFreeCar()) {
+    carBtn.textContent = '🚗 Hop in';
+    carBtn.classList.remove('hidden');
+  } else {
+    carBtn.classList.add('hidden');
+  }
+}
+
+carBtn.addEventListener('click', () => requestCar(drivingCar === null));
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
+    if (drivingCar !== null) requestCar(false);
+    else if (nearFreeCar()) requestCar(true);
+  }
+});
 
 // --- Session state ----------------------------------------------------------
 
@@ -166,15 +208,19 @@ const SEND_INTERVAL_MS = 66; // ~15 Hz
 
 let myId = '';
 let host: { room: HostRoom; sim: HostSim } | null = null;
+let clientRoom: ClientRoom | null = null;
 let latestState: WorldState | null = null;
 let lastPhase: Phase = 'lobby';
 let inRoom = false;
 
 const local = new LocalController();
+const carCtrl = new CarController();
+let drivingCar: number | null = null;
 let myMesh: THREE.Group | null = null;
 
 const remotes = new Map<string, RemoteAvatar>();
 const bottles = new Map<number, { mesh: THREE.Group; kind: BottleKind }>();
+const cars = new Map<number, RemoteCar>();
 
 function enterRoom(colorIndex: number, name: string, code: string, isHost: boolean) {
   myMesh = createPlayerMesh(colorIndex, name);
@@ -205,6 +251,7 @@ async function createRoom(name: string, mode: SceneMode) {
 
 async function joinRoom(code: string, name: string) {
   const room = await ClientRoom.join(code, name);
+  clientRoom = room;
   myId = room.myId;
   room.onState = (state) => {
     latestState = state;
@@ -218,9 +265,21 @@ async function joinRoom(code: string, name: string) {
     setTimeout(() => location.reload(), 2500);
   };
   setInterval(() => {
-    room.sendPos([local.pos.x, 0, local.pos.z], local.ry, local.moving);
+    const pose = currentPose();
+    room.sendPos(pose.p, pose.ry, pose.moving);
   }, SEND_INTERVAL_MS);
   enterRoom(room.colorIndex, name, code, false);
+}
+
+function currentPose(): { p: Vec3; ry: number; moving: boolean } {
+  if (drivingCar !== null) {
+    return {
+      p: [carCtrl.pos.x, 0, carCtrl.pos.z],
+      ry: carCtrl.ry,
+      moving: Math.abs(carCtrl.speed) > 0.3,
+    };
+  }
+  return { p: [local.pos.x, 0, local.pos.z], ry: local.ry, moving: local.moving };
 }
 
 hud.onCreate = async (name, mode) => {
@@ -259,6 +318,21 @@ function applyState(state: WorldState, t: number) {
     lastPhase = state.phase;
   }
 
+  // My car enter/exit transitions (host decides; we react to state)
+  const me = state.players.find((p) => p.id === myId);
+  const myCar = me?.car ?? null;
+  if (myCar !== drivingCar) {
+    if (myCar !== null) {
+      const car = state.cars.find((c) => c.id === myCar);
+      if (car) carCtrl.reset(car.p, car.ry);
+    } else if (me) {
+      // Host placed us beside the car on exit
+      local.pos.set(me.p[0], 0, me.p[2]);
+      local.ry = me.ry;
+    }
+    drivingCar = myCar;
+  }
+
   const seenPlayers = new Set<string>();
   for (const p of state.players) {
     seenPlayers.add(p.id);
@@ -270,6 +344,7 @@ function applyState(state: WorldState, t: number) {
       remotes.set(p.id, avatar);
     }
     avatar.setTarget(p.p, p.ry, p.moving);
+    avatar.group.visible = p.car === null; // hidden while driving
   }
   for (const [id, avatar] of remotes) {
     if (!seenPlayers.has(id)) {
@@ -302,6 +377,26 @@ function applyState(state: WorldState, t: number) {
     }
   }
 
+  const seenCars = new Set<number>();
+  for (const c of state.cars) {
+    seenCars.add(c.id);
+    let car = cars.get(c.id);
+    if (!car) {
+      car = new RemoteCar(c.id - 1);
+      car.snap(c.p, c.ry);
+      scene.add(car.group);
+      cars.set(c.id, car);
+    }
+    // My own car is posed from the local controller in the main loop
+    if (c.occupant !== myId) car.setTarget(c.p, c.ry);
+  }
+  for (const [id, car] of cars) {
+    if (!seenCars.has(id)) {
+      scene.remove(car.group);
+      cars.delete(id);
+    }
+  }
+
   if (state.phase === 'lobby') {
     hud.updateLobby(state.players);
   } else if (state.phase === 'play') {
@@ -328,17 +423,18 @@ function onPhaseChange(state: WorldState) {
 const camTarget = new THREE.Vector3();
 
 function updateCamera(dt: number, t: number) {
-  camTarget.set(
-    local.pos.x - Math.sin(local.ry) * 6.2,
-    4.4,
-    local.pos.z - Math.cos(local.ry) * 6.2,
-  );
-  camTarget.x = Math.min(7.4, Math.max(-7.4, camTarget.x));
-  camTarget.z = Math.min(29.4, Math.max(-29.4, camTarget.z));
+  const driving = drivingCar !== null;
+  const px = driving ? carCtrl.pos.x : local.pos.x;
+  const pz = driving ? carCtrl.pos.z : local.pos.z;
+  const ry = driving ? carCtrl.ry : local.ry;
+  const dist = driving ? 10 : 6.2;
+  camTarget.set(px - Math.sin(ry) * dist, driving ? 6.4 : 4.4, pz - Math.cos(ry) * dist);
+  // Keep the chase camera out of buildings (same pushout as bodies)
+  collideCircle(camTarget, 1.2, world);
   camera.position.lerp(camTarget, 1 - Math.pow(0.0005, dt));
   // Subtle drunk camera roll
   camera.up.set(Math.sin(t * 0.9) * 0.05, 1, 0).normalize();
-  camera.lookAt(local.pos.x, 1.6, local.pos.z);
+  camera.lookAt(px, 1.6, pz);
 }
 
 // --- Main loop -----------------------------------------------------------------
@@ -363,14 +459,28 @@ renderer.setAnimationLoop(() => {
       fwd = joy.fwd;
       turn = joy.turn;
     }
-    local.update(dt, fwd, turn, world);
-    myMesh.position.copy(local.pos);
-    myMesh.rotation.y = local.ry;
-    applyWobble(myMesh, t, local.moving);
+    if (drivingCar !== null) {
+      carCtrl.update(dt, fwd, turn, world);
+      myMesh.visible = false;
+      const mine = cars.get(drivingCar);
+      if (mine) {
+        mine.group.position.copy(carCtrl.pos);
+        mine.group.rotation.y = carCtrl.ry;
+        applyCarWobble(mine.group, t, dt, carCtrl.speed);
+      }
+    } else {
+      local.update(dt, fwd, turn, world);
+      myMesh.visible = true;
+      myMesh.position.copy(local.pos);
+      myMesh.rotation.y = local.ry;
+      applyWobble(myMesh, t, local.moving);
+    }
     if (host) {
-      host.sim.setPos(myId, [local.pos.x, 0, local.pos.z] as Vec3, local.ry, local.moving);
+      const pose = currentPose();
+      host.sim.setPos(myId, pose.p, pose.ry, pose.moving);
       host.sim.tick(dt);
     }
+    updateCarButton();
     updateCamera(dt, t);
   } else {
     // Menu backdrop: slow drift through the alley
@@ -382,7 +492,33 @@ renderer.setAnimationLoop(() => {
   for (const avatar of remotes.values()) {
     avatar.update(dt, t);
   }
+  for (const [id, car] of cars) {
+    if (id !== drivingCar) car.update(dt, t);
+  }
 
   if (lofi) renderer.render(scene, camera);
   else composer.render();
 });
+
+// Read-only debug handle for end-to-end tests
+(window as unknown as Record<string, unknown>).__dad = {
+  get pos(): [number, number] {
+    return drivingCar !== null
+      ? [carCtrl.pos.x, carCtrl.pos.z]
+      : [local.pos.x, local.pos.z];
+  },
+  get ry(): number {
+    return drivingCar !== null ? carCtrl.ry : local.ry;
+  },
+  get car(): number | null {
+    return drivingCar;
+  },
+  get speed(): number {
+    return carCtrl.speed;
+  },
+  get bottles(): [number, number][] {
+    return (latestState?.bottles ?? [])
+      .filter((b) => b.active)
+      .map((b) => [b.p[0], b.p[2]]);
+  },
+};

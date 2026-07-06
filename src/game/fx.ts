@@ -19,7 +19,7 @@ export function glowTexture(): THREE.Texture {
   return sharedGlow;
 }
 
-const RAIN_COUNT = 600;
+const RAIN_COUNT = 1000;
 
 export class Rain {
   private points: THREE.Points;
@@ -28,9 +28,9 @@ export class Rain {
   constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(RAIN_COUNT * 3);
     for (let i = 0; i < RAIN_COUNT; i++) {
-      this.positions[i * 3] = -9 + Math.random() * 18;
-      this.positions[i * 3 + 1] = Math.random() * 14;
-      this.positions[i * 3 + 2] = -31 + Math.random() * 62;
+      this.positions[i * 3] = -45 + Math.random() * 90;
+      this.positions[i * 3 + 1] = Math.random() * 15;
+      this.positions[i * 3 + 2] = -30 + Math.random() * 150;
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -53,9 +53,9 @@ export class Rain {
       p[i * 3 + 1] -= 13 * dt;
       p[i * 3] += 1.2 * dt; // wind
       if (p[i * 3 + 1] < 0) {
-        p[i * 3] = -9 + Math.random() * 18;
-        p[i * 3 + 1] = 12 + Math.random() * 3;
-        p[i * 3 + 2] = -31 + Math.random() * 62;
+        p[i * 3] = -45 + Math.random() * 90;
+        p[i * 3 + 1] = 13 + Math.random() * 3;
+        p[i * 3 + 2] = -30 + Math.random() * 150;
       }
     }
     this.points.geometry.attributes.position.needsUpdate = true;

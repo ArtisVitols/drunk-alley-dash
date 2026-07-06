@@ -20,7 +20,24 @@ export interface PlayerState {
   ry: number;
   moving: boolean;
   score: number;
+  car: number | null;
 }
+
+export interface CarState {
+  id: number;
+  p: Vec3;
+  ry: number;
+  occupant: string | null;
+}
+
+// Parking spots on the street just outside the alley exit; one car
+// per player spawns here at round start.
+export const CAR_SPAWNS: { p: Vec3; ry: number }[] = [
+  { p: [-14, 0, 35], ry: Math.PI / 2 },
+  { p: [-20, 0, 35], ry: Math.PI / 2 },
+  { p: [14, 0, 35], ry: -Math.PI / 2 },
+  { p: [20, 0, 35], ry: -Math.PI / 2 },
+];
 
 export interface BottleState {
   id: number;
@@ -35,11 +52,13 @@ export interface WorldState {
   timeLeft: number;
   players: PlayerState[];
   bottles: BottleState[];
+  cars: CarState[];
 }
 
 export type ClientMsg =
   | { t: 'hi'; name: string }
-  | { t: 'pos'; p: Vec3; ry: number; moving: boolean };
+  | { t: 'pos'; p: Vec3; ry: number; moving: boolean }
+  | { t: 'car'; enter: boolean };
 
 export type HostMsg =
   | { t: 'welcome'; id: string; colorIndex: number }

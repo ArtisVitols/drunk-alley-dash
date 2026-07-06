@@ -249,29 +249,37 @@ export function applyWobble(mesh: THREE.Group, t: number, moving: boolean) {
   }
 }
 
-function collideWorld(pos: THREE.Vector3, world: WorldGeom) {
+// Circle-vs-world collision shared by walkers and cars. Returns true
+// if the position had to be corrected (something was hit).
+export function collideCircle(pos: THREE.Vector3, radius: number, world: WorldGeom): boolean {
+  let hit = false;
   const b = world.bounds;
-  pos.x = Math.min(b.maxX, Math.max(b.minX, pos.x));
-  pos.z = Math.min(b.maxZ, Math.max(b.minZ, pos.z));
+  const clampedX = Math.min(b.maxX, Math.max(b.minX, pos.x));
+  const clampedZ = Math.min(b.maxZ, Math.max(b.minZ, pos.z));
+  if (clampedX !== pos.x || clampedZ !== pos.z) hit = true;
+  pos.x = clampedX;
+  pos.z = clampedZ;
   for (const o of world.obstacles) {
     const cx = Math.min(o.x + o.hx, Math.max(o.x - o.hx, pos.x));
     const cz = Math.min(o.z + o.hz, Math.max(o.z - o.hz, pos.z));
     const dx = pos.x - cx;
     const dz = pos.z - cz;
     const d2 = dx * dx + dz * dz;
-    if (d2 >= BODY_RADIUS * BODY_RADIUS) continue;
+    if (d2 >= radius * radius) continue;
+    hit = true;
     if (d2 > 1e-6) {
       const d = Math.sqrt(d2);
-      pos.x = cx + (dx / d) * BODY_RADIUS;
-      pos.z = cz + (dz / d) * BODY_RADIUS;
+      pos.x = cx + (dx / d) * radius;
+      pos.z = cz + (dz / d) * radius;
     } else {
       // Center inside the box — push out along the shallowest axis
-      const pushX = o.hx + BODY_RADIUS - Math.abs(pos.x - o.x);
-      const pushZ = o.hz + BODY_RADIUS - Math.abs(pos.z - o.z);
-      if (pushX < pushZ) pos.x = o.x + Math.sign(pos.x - o.x || 1) * (o.hx + BODY_RADIUS);
-      else pos.z = o.z + Math.sign(pos.z - o.z || 1) * (o.hz + BODY_RADIUS);
+      const pushX = o.hx + radius - Math.abs(pos.x - o.x);
+      const pushZ = o.hz + radius - Math.abs(pos.z - o.z);
+      if (pushX < pushZ) pos.x = o.x + Math.sign(pos.x - o.x || 1) * (o.hx + radius);
+      else pos.z = o.z + Math.sign(pos.z - o.z || 1) * (o.hz + radius);
     }
   }
+  return hit;
 }
 
 export class LocalController {
@@ -294,7 +302,7 @@ export class LocalController {
       this.pos.x += Math.sin(this.ry) * step;
       this.pos.z += Math.cos(this.ry) * step;
     }
-    collideWorld(this.pos, world);
+    collideCircle(this.pos, BODY_RADIUS, world);
   }
 }
 

@@ -22,6 +22,7 @@ export class HostRoom {
   onJoin: (id: string, name: string) => number | null = () => null;
   onLeave: (id: string) => void = () => {};
   onPos: (id: string, p: Vec3, ry: number, moving: boolean) => void = () => {};
+  onCar: (id: string, enter: boolean) => void = () => {};
 
   private conns = new Map<string, DataConnection>();
   private lastSeen = new Map<string, number>();
@@ -71,6 +72,8 @@ export class HostRoom {
         conn.send({ t: 'welcome', id: conn.peer, colorIndex } satisfies HostMsg);
       } else if (msg.t === 'pos') {
         this.onPos(conn.peer, msg.p, msg.ry, msg.moving);
+      } else if (msg.t === 'car') {
+        this.onCar(conn.peer, msg.enter);
       }
     });
     const drop = () => {
@@ -176,6 +179,12 @@ export class ClientRoom {
   sendPos(p: Vec3, ry: number, moving: boolean) {
     if (this.conn.open) {
       this.conn.send({ t: 'pos', p, ry, moving } satisfies ClientMsg);
+    }
+  }
+
+  sendCar(enter: boolean) {
+    if (this.conn.open) {
+      this.conn.send({ t: 'car', enter } satisfies ClientMsg);
     }
   }
 }

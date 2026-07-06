@@ -285,6 +285,17 @@ button:disabled {
   font-family: ui-monospace, monospace;
 }
 
+#car-btn {
+  pointer-events: auto;
+  position: absolute;
+  right: 18px;
+  bottom: max(52px, calc(env(safe-area-inset-bottom) + 44px));
+  font-size: 17px;
+  padding: 14px 20px;
+  border-radius: 30px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+}
+
 @media (max-width: 600px) {
   .panel {
     padding: 20px 18px;

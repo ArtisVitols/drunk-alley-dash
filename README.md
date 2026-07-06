@@ -23,6 +23,13 @@ On **phones/tablets**, drag anywhere on the screen — a floating joystick
 appears under your thumb (up/down walks, left/right turns).
 Walking drunk means your heading drifts on its own — deal with it.
 
+**Cars:** the alley opens onto a small city — a few blocks of streets. One
+car per player is parked at the alley exit. Walk up to a free one and press
+**E** (or tap the **🚗** button) to hop in, drive the streets — the car pulls
+side to side, you're drunk — and press **E** / tap **🚪** to get out. Driving
+is faster and collects bottles in a wider radius, but most bottles hide in
+the alley on foot.
+
 ## Develop
 
 ```sh

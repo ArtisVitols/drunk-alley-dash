@@ -6,12 +6,14 @@ import type {
   Vec3,
   WorldState,
 } from '../net/network';
-import { BOTTLE_POINTS } from '../net/network';
+import { BOTTLE_POINTS, CAR_SPAWNS } from '../net/network';
 import { MAX_PLAYERS } from '../net/peer';
 
 export const ROUND_SECONDS = 120;
-const BOTTLE_COUNT = 12;
+const BOTTLE_COUNT = 26; // spread across alley + city streets
 const COLLECT_RADIUS = 1.25;
+const CAR_COLLECT_RADIUS = 2.4;
+const CAR_ENTER_RADIUS = 3.5;
 const RESPAWN_DELAY = 3;
 
 // Weighted: beer common, vodka rare
@@ -32,6 +34,7 @@ function makePlayer(id: string, name: string, colorIndex: number): PlayerState {
     ry: 0,
     moving: false,
     score: 0,
+    car: null,
   };
 }
 
@@ -54,6 +57,7 @@ export class HostSim {
       timeLeft: ROUND_SECONDS,
       players: [makePlayer(hostId, hostName, 0)],
       bottles: [],
+      cars: [],
     };
   }
 
@@ -68,15 +72,53 @@ export class HostSim {
 
   removePlayer(id: string) {
     const i = this.state.players.findIndex((p) => p.id === id);
-    if (i >= 0) this.state.players.splice(i, 1);
+    if (i >= 0) {
+      const car = this.state.cars.find((c) => c.occupant === id);
+      if (car) car.occupant = null;
+      this.state.players.splice(i, 1);
+    }
   }
 
   setPos(id: string, p: Vec3, ry: number, moving: boolean) {
     const player = this.state.players.find((pl) => pl.id === id);
-    if (player) {
-      player.p = p;
-      player.ry = ry;
-      player.moving = moving;
+    if (!player) return;
+    player.p = p;
+    player.ry = ry;
+    player.moving = moving;
+    if (player.car !== null) {
+      const car = this.state.cars.find((c) => c.id === player.car);
+      if (car) {
+        car.p = p;
+        car.ry = ry;
+      }
+    }
+  }
+
+  // Hop in the nearest free car / hop out beside the current one.
+  requestCar(id: string, enter: boolean) {
+    const player = this.state.players.find((pl) => pl.id === id);
+    if (!player || this.state.phase !== 'play') return;
+    if (enter && player.car === null) {
+      for (const car of this.state.cars) {
+        if (car.occupant !== null) continue;
+        const dx = player.p[0] - car.p[0];
+        const dz = player.p[2] - car.p[2];
+        if (dx * dx + dz * dz < CAR_ENTER_RADIUS * CAR_ENTER_RADIUS) {
+          car.occupant = id;
+          player.car = car.id;
+          player.p = [...car.p];
+          player.ry = car.ry;
+          return;
+        }
+      }
+    } else if (!enter && player.car !== null) {
+      const car = this.state.cars.find((c) => c.id === player.car);
+      player.car = null;
+      if (car) {
+        car.occupant = null;
+        // Step out on the car's left side
+        player.p = [car.p[0] + Math.cos(car.ry) * 2, 0, car.p[2] - Math.sin(car.ry) * 2];
+      }
     }
   }
 
@@ -86,7 +128,15 @@ export class HostSim {
       p.score = 0;
       p.p = spawnLine(i);
       p.ry = 0;
+      p.car = null;
     });
+    // One parked car per player at the alley exit
+    s.cars = s.players.map((_, i) => ({
+      id: i + 1,
+      p: [...CAR_SPAWNS[i].p] as Vec3,
+      ry: CAR_SPAWNS[i].ry,
+      occupant: null,
+    }));
     s.bottles = [];
     this.respawns = [];
     for (let i = 0; i < BOTTLE_COUNT; i++) {
@@ -121,7 +171,8 @@ export class HostSim {
       for (const player of s.players) {
         const dx = player.p[0] - bottle.p[0];
         const dz = player.p[2] - bottle.p[2];
-        if (dx * dx + dz * dz < COLLECT_RADIUS * COLLECT_RADIUS) {
+        const radius = player.car !== null ? CAR_COLLECT_RADIUS : COLLECT_RADIUS;
+        if (dx * dx + dz * dz < radius * radius) {
           bottle.active = false;
           player.score += BOTTLE_POINTS[bottle.kind];
           this.respawns.push({ at: this.clock + RESPAWN_DELAY, bottleId: bottle.id });
