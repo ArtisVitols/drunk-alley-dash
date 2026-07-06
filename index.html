@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍺</text></svg>" />
+    <title>Drunk Alley Dash</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="ui">
+      <div id="menu" class="panel">
+        <h1>🍺 Drunk Alley Dash</h1>
+        <p class="tag">Stagger around a filthy alley. Grab more booze than your mates. Up to 4 players.</p>
+        <input id="name-input" maxlength="12" placeholder="Your nickname" autocomplete="off" />
+        <div class="row">
+          <button id="create-btn">Create room</button>
+          <span class="or">or</span>
+          <input id="code-input" maxlength="4" placeholder="CODE" autocomplete="off" />
+          <button id="join-btn">Join</button>
+        </div>
+        <p id="menu-error" class="error"></p>
+      </div>
+
+      <div id="lobby" class="panel hidden">
+        <h2>Room <span id="room-code"></span></h2>
+        <p class="tag">Share the code — friends can join from the same page</p>
+        <ul id="player-list"></ul>
+        <button id="start-btn" class="hidden">Start round</button>
+        <p id="lobby-note" class="tag"></p>
+      </div>
+
+      <div id="hud" class="hidden">
+        <div id="timer"></div>
+        <div id="scores"></div>
+        <div id="help">W/S move &nbsp; A/D turn &nbsp;·&nbsp; 🍺 beer +1 &nbsp; 🍷 wine +2 &nbsp; 🥃 vodka +3</div>
+      </div>
+
+      <div id="end" class="panel hidden">
+        <h2 id="end-title"></h2>
+        <ol id="end-scores"></ol>
+        <button id="again-btn" class="hidden">Play again</button>
+        <p id="end-note" class="tag"></p>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
