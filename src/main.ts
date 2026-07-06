@@ -1,13 +1,19 @@
 import './style.css';
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { buildScene, randomFreePos } from './game/scene';
+import { PickupFX, Rain, Steam } from './game/fx';
 import {
   LocalController,
   RemoteAvatar,
   applyWobble,
   createPlayerMesh,
 } from './game/player';
-import { createBottleMesh } from './game/pickups';
+import { BOTTLE_GLOW, createBottleMesh } from './game/pickups';
+import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
 import { ClientRoom, HostRoom } from './net/peer';
@@ -28,19 +34,34 @@ try {
   }
   throw new Error('WebGL unavailable');
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 120);
 
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.5, 0.62);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
+
 function resize() {
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
 resize();
 
-const world = buildScene(scene);
+const world = buildScene(scene, renderer);
+const rain = new Rain(scene);
+const steams = world.steamVents.map((vent) => new Steam(scene, vent));
+const pickupFX = new PickupFX(scene);
 const hud = new HUD();
 
 // --- Input ----------------------------------------------------------------
@@ -238,6 +259,9 @@ function applyState(state: WorldState, t: number) {
       scene.add(entry.mesh);
       bottles.set(b.id, entry);
     }
+    if (entry.mesh.visible && !b.active && state.phase === 'play') {
+      pickupFX.spawn(b.p, BOTTLE_POINTS[b.kind], BOTTLE_GLOW[b.kind]);
+    }
     entry.mesh.visible = b.active;
     entry.mesh.position.set(b.p[0], 0.2 + Math.sin(t * 2 + b.id) * 0.08, b.p[2]);
     entry.mesh.rotation.y = t * 0.9 + b.id;
@@ -293,11 +317,14 @@ function updateCamera(dt: number, t: number) {
 let last = performance.now();
 renderer.setAnimationLoop(() => {
   const now = performance.now();
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const t = now / 1000;
 
   world.updateFlicker(t);
+  rain.update(dt);
+  for (const steam of steams) steam.update(dt);
+  pickupFX.update(dt);
 
   if (inRoom && myMesh) {
     if (latestState) applyState(latestState, t);
@@ -327,5 +354,5 @@ renderer.setAnimationLoop(() => {
     avatar.update(dt, t);
   }
 
-  renderer.render(scene, camera);
+  composer.render();
 });
