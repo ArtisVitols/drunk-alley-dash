@@ -41,6 +41,11 @@ a00b27b8; recreate from this outline if gone:
    `#scores .srow` count is 2.
 4. Movement: `window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW'}))`
    (+ matching keyup). Real key events also work; inputs must not be focused.
+   Mobile: `page.emulate(KnownDevices['Pixel 5'])`, then
+   `page.touchscreen.touchStart(x,y)` / `touchMove` / `touchEnd` drives the
+   floating joystick (`#stick` unhides while dragging); drag up = walk,
+   sideways = turn. A full phone-joins-desktop script outline lived at
+   `scratchpad/mobile.mjs` in session a00b27b8.
 5. Scoring: wander (W + random A/D bursts) until `.srow.me .pts` > 0
    (usually well under a minute); check the other browser's scoreboard agrees.
 6. Disconnect probe: close browser B; A's scoreboard must drop to 1 row

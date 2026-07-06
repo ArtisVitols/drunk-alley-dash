@@ -6,7 +6,6 @@ import {
   RemoteAvatar,
   applyWobble,
   createPlayerMesh,
-  type InputState,
 } from './game/player';
 import { createBottleMesh } from './game/pickups';
 import { HostSim } from './game/host';
@@ -46,8 +45,8 @@ const hud = new HUD();
 
 // --- Input ----------------------------------------------------------------
 
-const input: InputState = { up: false, down: false, left: false, right: false };
-const KEYMAP: Record<string, keyof InputState> = {
+const keys = { up: false, down: false, left: false, right: false };
+const KEYMAP: Record<string, keyof typeof keys> = {
   KeyW: 'up',
   ArrowUp: 'up',
   KeyS: 'down',
@@ -60,14 +59,61 @@ const KEYMAP: Record<string, keyof InputState> = {
 window.addEventListener('keydown', (e) => {
   const key = KEYMAP[e.code];
   if (key && !(e.target instanceof HTMLInputElement)) {
-    input[key] = true;
+    keys[key] = true;
     e.preventDefault();
   }
 });
 window.addEventListener('keyup', (e) => {
   const key = KEYMAP[e.code];
-  if (key) input[key] = false;
+  if (key) keys[key] = false;
 });
+
+// Touch joystick: floats to wherever the thumb lands on the canvas.
+// Drag up/down = walk, drag left/right = turn.
+const stick = document.getElementById('stick')!;
+const stickKnob = document.getElementById('stick-knob')!;
+const JOY_RADIUS = 56;
+const joy = { pointerId: null as number | null, baseX: 0, baseY: 0, fwd: 0, turn: 0 };
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch' || joy.pointerId !== null || !inRoom) return;
+  joy.pointerId = e.pointerId;
+  joy.baseX = e.clientX;
+  joy.baseY = e.clientY;
+  stick.style.left = `${e.clientX}px`;
+  stick.style.top = `${e.clientY}px`;
+  stickKnob.style.transform = 'translate(-50%, -50%)';
+  stick.classList.remove('hidden');
+  canvas.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== joy.pointerId) return;
+  let dx = e.clientX - joy.baseX;
+  let dy = e.clientY - joy.baseY;
+  const len = Math.hypot(dx, dy);
+  if (len > JOY_RADIUS) {
+    dx *= JOY_RADIUS / len;
+    dy *= JOY_RADIUS / len;
+  }
+  stickKnob.style.transform = `translate(calc(${dx}px - 50%), calc(${dy}px - 50%))`;
+  joy.fwd = -dy / JOY_RADIUS;
+  joy.turn = -dx / JOY_RADIUS;
+});
+const joyEnd = (e: PointerEvent) => {
+  if (e.pointerId !== joy.pointerId) return;
+  joy.pointerId = null;
+  joy.fwd = 0;
+  joy.turn = 0;
+  stick.classList.add('hidden');
+};
+canvas.addEventListener('pointerup', joyEnd);
+canvas.addEventListener('pointercancel', joyEnd);
+
+if (window.matchMedia('(pointer: coarse)').matches) {
+  const help = document.getElementById('help');
+  if (help) help.innerHTML = 'Drag anywhere to stagger around &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
+}
 
 // --- Session state ----------------------------------------------------------
 
@@ -255,7 +301,13 @@ renderer.setAnimationLoop(() => {
 
   if (inRoom && myMesh) {
     if (latestState) applyState(latestState, t);
-    local.update(dt, input, world);
+    let fwd = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+    let turn = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
+    if (joy.pointerId !== null) {
+      fwd = joy.fwd;
+      turn = joy.turn;
+    }
+    local.update(dt, fwd, turn, world);
     myMesh.position.copy(local.pos);
     myMesh.rotation.y = local.ry;
     applyWobble(myMesh, t, local.moving);

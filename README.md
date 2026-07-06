@@ -15,6 +15,8 @@ One player clicks **Create room** and shares the 4-letter code; up to 3 friends
 enter it and **Join**. The host starts the round (solo works too).
 
 Controls: **W/S** move forward/back, **A/D** turn (arrows work too).
+On **phones/tablets**, drag anywhere on the screen — a floating joystick
+appears under your thumb (up/down walks, left/right turns).
 Walking drunk means your heading drifts on its own — deal with it.
 
 ## Develop

@@ -8,13 +8,6 @@ const MOVE_SPEED = 6;
 const TURN_SPEED = 2.7;
 const BODY_RADIUS = 0.45;
 
-export interface InputState {
-  up: boolean;
-  down: boolean;
-  left: boolean;
-  right: boolean;
-}
-
 function makeNameSprite(name: string): THREE.Sprite {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
@@ -131,12 +124,12 @@ export class LocalController {
   moving = false;
   private swayClock = Math.random() * 10;
 
-  update(dt: number, input: InputState, world: WorldGeom) {
-    const turn = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+  // fwd/turn are analog axes in [-1, 1]: keyboard sends ±1, the
+  // touch joystick sends fractional values.
+  update(dt: number, fwd: number, turn: number, world: WorldGeom) {
     this.ry += turn * TURN_SPEED * dt;
 
-    const fwd = (input.up ? 1 : 0) - (input.down ? 1 : 0);
-    this.moving = fwd !== 0;
+    this.moving = Math.abs(fwd) > 0.08;
     if (this.moving) {
       this.swayClock += dt;
       // The drunk part: heading drifts on its own while walking
