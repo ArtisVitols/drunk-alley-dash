@@ -3,6 +3,16 @@ import type { CarKind, PlayerState, Vec3 } from '../net/network';
 import type { Obstacle, WorldGeom } from './scene';
 import type { Circle } from './player';
 import { PLAYER_COLORS, collideCircle, collideCircles } from './player';
+import { elevation } from './road';
+
+// Terrain slope along a heading — used to pitch car meshes on hills
+export function slopePitch(x: number, z: number, ry: number): number {
+  const dx = Math.sin(ry);
+  const dz = Math.cos(ry);
+  const ahead = elevation(x + dx * 2, z + dz * 2);
+  const behind = elevation(x - dx * 2, z - dz * 2);
+  return -Math.atan2(ahead - behind, 4);
+}
 
 // Per-kind handling: the sedan is nimble, the RV is a drunk whale.
 const CAR_STATS: Record<
@@ -402,7 +412,8 @@ export class RemoteCar {
   }
 
   setTarget(p: Vec3, ry: number) {
-    this.targetPos.set(p[0], p[1], p[2]);
+    // y is derived from terrain, never from the network
+    this.targetPos.set(p[0], elevation(p[0], p[2]), p[2]);
     this.targetRy = ry;
   }
 
@@ -420,6 +431,11 @@ export class RemoteCar {
     const delta =
       ((this.targetRy - this.group.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.group.rotation.y += delta * k;
+    this.group.rotation.x = slopePitch(
+      this.group.position.x,
+      this.group.position.z,
+      this.group.rotation.y,
+    );
     applyCarWobble(this.group, t, dt, this.speed);
   }
 }

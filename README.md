@@ -24,27 +24,26 @@ On **phones/tablets**, drag anywhere on the screen — a floating joystick
 appears under your thumb (up/down walks, left/right turns).
 Walking drunk means your heading drifts on its own — deal with it.
 
-**Cars:** the alley opens onto a small city — a few blocks of streets. Four
-rides are always parked at the alley exit: a nimble **sedan**, a boxy **van**,
-a lumbering **RV**, and a **pickup truck** with an open bed — each drives
-differently, and they collide with each other (and with you). Walk up and
-press **E** (or tap the **🚗** button) to hop in; press **E** / tap **🚪** to
-get out. Up to 4 people fit in one car: the first in drives (invisible — busy
-steering), everyone else hangs out of the windows waving their bottles (truck
-passengers party standing in the bed). If the driver bails, the next passenger
-inherits the wheel. Only drivers and walkers collect bottles — driving grabs
-them in a wider radius, but most bottles hide in the alley on foot.
+**The RV:** the alley opens onto a small city — a few blocks of streets — and
+on the main street waits the team's one and only vehicle: a beat-up cab-over
+**RV** that seats the whole 4-player crew. Walk up and press **E** (or tap the
+**🚗** button) to hop in; press **E** / tap **🚪** to get out. The first one in
+drives (invisible — busy steering), everyone else hangs out of the windows
+waving their bottles. If the driver bails, the next passenger inherits the
+wheel. Only the driver and walkers collect bottles — driving grabs them in a
+wider radius, but most bottles hide in the alley on foot.
 
 **The road to ROUTE 65 (co-op):** the city's north gate opens onto a winding
-country road — asphalt at first, then a sandy track through green fields and
-pines. The road is blocked by junk: roadblocks, fallen logs, boulder piles.
-The team hops out and **stands at the obstacle** — your drunk gets to work on
-it automatically, and a progress ring fills, much faster together (solo
-~15 s, full crew ~4 s). Off-road grass bogs cars down, sand makes the drunk
-swerving worse, and a distance readout counts down to the **ROUTE 65**
-junction. Get any occupied vehicle there (the RV fits the whole team) and the
-run is won — the host can start a fresh run from the victory screen. Bottles
-are strewn along the route, so keep gathering.
+country road that **climbs and dips over rolling hills** — asphalt at first,
+then a sandy track through green fields. A dense **wall of pines** hems the
+road in on both sides: there is no driving around anything. The road is
+blocked by junk — roadblocks, fallen logs, boulder piles — so the team hops
+out and **stands at the obstacle**; your drunk gets to work automatically and
+a progress panel fills, much faster together (solo ~15 s, full crew ~4 s).
+Sand makes the drunk swerving worse, and a distance readout counts down to
+the **ROUTE 65** junction. Get the RV there with someone aboard and the run
+is won — the host can start a fresh run from the victory screen. Bottles are
+strewn along the route, so keep gathering.
 
 ## Develop
 

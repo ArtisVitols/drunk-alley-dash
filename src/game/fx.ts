@@ -171,7 +171,7 @@ export class PickupFX {
           depthWrite: false,
         }),
       );
-      sprite.position.set(pos[0], 0.5, pos[2]);
+      sprite.position.set(pos[0], pos[1] + 0.5, pos[2]);
       sprite.scale.set(0.35, 0.35, 1);
       this.scene.add(sprite);
       const angle = (i / 10) * Math.PI * 2;
@@ -182,7 +182,7 @@ export class PickupFX {
       });
     }
     const pop = scoreSprite(points);
-    pop.position.set(pos[0], 1.2, pos[2]);
+    pop.position.set(pos[0], pos[1] + 1.2, pos[2]);
     this.scene.add(pop);
     this.pops.push({ sprite: pop, life: 0 });
   }

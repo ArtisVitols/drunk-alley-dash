@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { RoadObstacleKind, RoadObstacleState } from '../net/network';
 import type { Obstacle } from './scene';
 import { glowTexture } from './fx';
+import { elevation } from './road';
 
 const std = (color: number, roughness = 0.85) =>
   new THREE.MeshStandardMaterial({ color, roughness });
@@ -135,8 +136,9 @@ export class RoadObstacles {
       seen.add(state.id);
       let entry = this.entries.get(state.id);
       if (!entry) {
+        const y = elevation(state.p[0], state.p[2]);
         const group = buildMesh(state.kind);
-        group.position.set(state.p[0], 0, state.p[2]);
+        group.position.set(state.p[0], y, state.p[2]);
         group.rotation.y = state.ry;
         const { holder, fill } = makeProgressBar();
         group.add(holder);
@@ -146,7 +148,7 @@ export class RoadObstacles {
           bar: holder,
           fill,
           ry: state.ry,
-          base: new THREE.Vector3(state.p[0], 0, state.p[2]),
+          base: new THREE.Vector3(state.p[0], y, state.p[2]),
           clearAnim: state.cleared ? 2 : -1,
         };
         if (state.cleared) this.applyClearedPose(entry, 1);
@@ -178,7 +180,7 @@ export class RoadObstacles {
     const dz = -Math.sin(entry.ry);
     entry.group.position.set(
       entry.base.x + dx * 7.5 * k,
-      -0.35 * k,
+      entry.base.y - 0.35 * k,
       entry.base.z + dz * 7.5 * k,
     );
     entry.group.rotation.z = 0.35 * k;

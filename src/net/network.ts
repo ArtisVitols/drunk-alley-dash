@@ -48,13 +48,10 @@ export interface CarState {
   occupants: string[];
 }
 
-// The permanent fleet parked on the street outside the alley exit —
-// always all four, any player can take any of them.
+// The one and only vehicle: the team RV, parked on the main street
+// pointing at the city gate. Seats the whole 4-player crew.
 export const CAR_SPAWNS: { kind: CarKind; p: Vec3; ry: number }[] = [
-  { kind: 'sedan', p: [-13.5, 0, 35], ry: Math.PI / 2 },
-  { kind: 'van', p: [-21, 0, 35], ry: Math.PI / 2 },
-  { kind: 'rv', p: [14, 0, 35], ry: -Math.PI / 2 },
-  { kind: 'truck', p: [22, 0, 35], ry: -Math.PI / 2 },
+  { kind: 'rv', p: [0, 0, 42], ry: 0 },
 ];
 
 export interface BottleState {

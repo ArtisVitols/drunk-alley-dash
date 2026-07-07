@@ -8,6 +8,7 @@ import {
   GATE_Z,
   ROAD_HALF_WIDTH,
   distanceToRoad,
+  elevation,
   roadCurve,
   sampleRoad,
 } from './road';
@@ -133,6 +134,33 @@ export function buildScene(
   root.add(celestial);
 
   const cloudDrift: THREE.Sprite[] = [];
+  {
+    // Clouds both day and night (dim and moonlit after dark)
+    const cloudMap = cloudTexture();
+    const count = night ? 10 : 22;
+    for (let i = 0; i < count; i++) {
+      const cloud = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: cloudMap,
+          color: night ? 0x50597a : 0xffffff,
+          transparent: true,
+          opacity: night ? 0.3 : 0.6 + Math.random() * 0.3,
+          fog: false,
+          depthWrite: false,
+        }),
+      );
+      cloud.position.set(
+        -240 + Math.random() * 480,
+        60 + Math.random() * 70,
+        -60 + Math.random() * 500,
+      );
+      const s = 70 + Math.random() * 90;
+      cloud.scale.set(s, s * 0.42, 1);
+      cloud.renderOrder = -8;
+      root.add(cloud);
+      cloudDrift.push(cloud);
+    }
+  }
   if (night) {
     // Starfield on the upper dome
     const starPositions: number[] = [];
@@ -162,29 +190,6 @@ export function buildScene(
     );
     stars.renderOrder = -9;
     root.add(stars);
-  } else {
-    const cloudMap = cloudTexture();
-    for (let i = 0; i < 12; i++) {
-      const cloud = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: cloudMap,
-          transparent: true,
-          opacity: 0.55 + Math.random() * 0.3,
-          fog: false,
-          depthWrite: false,
-        }),
-      );
-      cloud.position.set(
-        -240 + Math.random() * 480,
-        70 + Math.random() * 60,
-        -60 + Math.random() * 500,
-      );
-      const s = 60 + Math.random() * 70;
-      cloud.scale.set(s, s * 0.45, 1);
-      cloud.renderOrder = -8;
-      root.add(cloud);
-      cloudDrift.push(cloud);
-    }
   }
 
   // Subtle image-based lighting so materials get specular life
@@ -373,12 +378,32 @@ export function buildScene(
 
   // ——— The countryside: grass, the winding road, ROUTE 65 ———————————
 
+  // Grass heightfield: the countryside rolls with the hills
+  const grassGeo = new THREE.PlaneGeometry(
+    WORLD_HALF_WIDTH * 2,
+    WORLD_MAX_Z - GATE_Z + 10,
+    64,
+    180,
+  );
+  grassGeo.rotateX(-Math.PI / 2);
+  grassGeo.translate(0, 0, (GATE_Z - 4 + WORLD_MAX_Z + 6) / 2);
+  {
+    const positions = grassGeo.attributes.position;
+    for (let i = 0; i < positions.count; i++) {
+      const gx = positions.getX(i);
+      const gz = positions.getZ(i);
+      // Tuck the (coarser) grass under the road bed so it can't poke
+      // through the ribbon between heightfield vertices
+      const d = distanceToRoad(gx, gz);
+      const dip = Math.max(0, 1 - d / (ROAD_HALF_WIDTH + 1.5)) * 0.45;
+      positions.setY(i, elevation(gx, gz) + 0.004 - dip);
+    }
+    grassGeo.computeVertexNormals();
+  }
   const grass = new THREE.Mesh(
-    new THREE.PlaneGeometry(WORLD_HALF_WIDTH * 2, WORLD_MAX_Z - GATE_Z + 10),
+    grassGeo,
     new THREE.MeshStandardMaterial({ map: grassTexture(12, 34), roughness: 0.95 }),
   );
-  grass.rotation.x = -Math.PI / 2;
-  grass.position.set(0, 0.004, (GATE_Z - 4 + WORLD_MAX_Z + 6) / 2);
   grass.receiveShadow = true;
   root.add(grass);
 
@@ -399,9 +424,10 @@ export function buildScene(
       const tan = roadCurve.getTangentAt(t);
       const nx = tan.z;
       const nz = -tan.x;
+      const y = elevation(p.x, p.z) + 0.06;
       positions.push(
-        p.x + nx * ROAD_HALF_WIDTH, 0.02, p.z + nz * ROAD_HALF_WIDTH,
-        p.x - nx * ROAD_HALF_WIDTH, 0.02, p.z - nz * ROAD_HALF_WIDTH,
+        p.x + nx * ROAD_HALF_WIDTH, y, p.z + nz * ROAD_HALF_WIDTH,
+        p.x - nx * ROAD_HALF_WIDTH, y, p.z - nz * ROAD_HALF_WIDTH,
       );
       normals.push(0, 1, 0, 0, 1, 0);
       uvs.push(0, t * 40, 1, t * 40);
@@ -415,6 +441,7 @@ export function buildScene(
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(indices);
+    geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, material);
     mesh.receiveShadow = true;
     root.add(mesh);
@@ -444,25 +471,44 @@ export function buildScene(
     }),
   );
 
-  // Pines, bushes and rocks scattered off-road (merged for draw calls)
+  // Pines, bushes and rocks (merged for draw calls), all planted on
+  // the terrain. addPine writes into the shared geometry arrays.
   const trunkGeos: THREE.BufferGeometry[] = [];
   const leafGeos: THREE.BufferGeometry[] = [];
   const bushGeos: THREE.BufferGeometry[] = [];
   const rockGeos: THREE.BufferGeometry[] = [];
-  let treesPlaced = 0;
-  for (let guard = 0; treesPlaced < 70 && guard < 600; guard++) {
-    const x = -(WORLD_HALF_WIDTH - 3) + Math.random() * (WORLD_HALF_WIDTH - 3) * 2;
-    const z = GATE_Z + 8 + Math.random() * (WORLD_MAX_Z - GATE_Z - 20);
-    if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 3) continue;
-    const s = 0.8 + Math.random() * 0.8;
+  const addPine = (x: number, z: number, s: number) => {
+    const y = elevation(x, z);
     const trunk = new THREE.CylinderGeometry(0.16 * s, 0.24 * s, 1.4 * s, 6);
-    trunk.translate(x, 0.7 * s, z);
+    trunk.translate(x, y + 0.7 * s, z);
     trunkGeos.push(trunk);
     const lower = new THREE.ConeGeometry(1.5 * s, 2.6 * s, 7);
-    lower.translate(x, 2.4 * s, z);
+    lower.translate(x, y + 2.4 * s, z);
     const upper = new THREE.ConeGeometry(1.05 * s, 2.0 * s, 7);
-    upper.translate(x, 3.7 * s, z);
+    upper.translate(x, y + 3.7 * s, z);
     leafGeos.push(lower, upper);
+  };
+
+  // The forest wall: dense pine belts flanking the road corridor, so
+  // the collision rail (clampToRoadCorridor) reads as scenery.
+  for (let t = 0.005; t <= 0.985; t += 0.006) {
+    const s = sampleRoad(t);
+    for (const side of [-1, 1] as const) {
+      const jitterAlong = (Math.random() - 0.5) * 2.5;
+      const off = ROAD_HALF_WIDTH + 3.6 + Math.random() * 2.2;
+      const x = s.p[0] + Math.cos(s.angle) * off * side + Math.sin(s.angle) * jitterAlong;
+      const z = s.p[2] - Math.sin(s.angle) * off * side + Math.cos(s.angle) * jitterAlong;
+      if (z < GATE_Z + 3) continue;
+      addPine(x, z, 0.9 + Math.random() * 0.7);
+    }
+  }
+  // Scattered deep-forest pines beyond the wall for depth
+  let treesPlaced = 0;
+  for (let guard = 0; treesPlaced < 60 && guard < 600; guard++) {
+    const x = -(WORLD_HALF_WIDTH - 3) + Math.random() * (WORLD_HALF_WIDTH - 3) * 2;
+    const z = GATE_Z + 8 + Math.random() * (WORLD_MAX_Z - GATE_Z - 20);
+    if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 7) continue;
+    addPine(x, z, 0.8 + Math.random() * 0.8);
     treesPlaced++;
   }
   for (let i = 0; i < 30; i++) {
@@ -471,7 +517,7 @@ export function buildScene(
     if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 1.5) continue;
     const bush = new THREE.IcosahedronGeometry(0.5 + Math.random() * 0.5, 0);
     bush.scale(1, 0.65, 1);
-    bush.translate(x, 0.35, z);
+    bush.translate(x, elevation(x, z) + 0.35, z);
     bushGeos.push(bush);
   }
   for (let i = 0; i < 14; i++) {
@@ -480,7 +526,7 @@ export function buildScene(
     if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 1.2) continue;
     const rock = new THREE.IcosahedronGeometry(0.4 + Math.random() * 0.7, 0);
     rock.scale(1.2, 0.7, 1);
-    rock.translate(x, 0.25, z);
+    rock.translate(x, elevation(x, z) + 0.25, z);
     rockGeos.push(rock);
   }
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.MeshStandardMaterial) => {
@@ -500,12 +546,10 @@ export function buildScene(
     const s = sampleRoad(t);
     for (const side of [-1, 1] as const) {
       const off = (ROAD_HALF_WIDTH + 1.6) * side;
+      const px = s.p[0] + Math.cos(s.angle) * off;
+      const pz = s.p[2] - Math.sin(s.angle) * off;
       const post = new THREE.BoxGeometry(0.14, 1.1, 0.14);
-      post.translate(
-        s.p[0] + Math.cos(s.angle) * off,
-        0.55,
-        s.p[2] - Math.sin(s.angle) * off,
-      );
+      post.translate(px, elevation(px, pz) + 0.55, pz);
       postGeos.push(post);
     }
   }
@@ -514,13 +558,12 @@ export function buildScene(
   // ROUTE 65 finish gate
   const poleMat2 = new THREE.MeshStandardMaterial({ color: 0x88898c, roughness: 0.5, metalness: 0.7 });
   const gateWidth = ROAD_HALF_WIDTH + 1.4;
+  const finishY = elevation(FINISH.p[0], FINISH.p[2]);
   for (const side of [-1, 1] as const) {
+    const px = FINISH.p[0] + Math.cos(FINISH.angle) * gateWidth * side;
+    const pz = FINISH.p[2] - Math.sin(FINISH.angle) * gateWidth * side;
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 5.2, 8), poleMat2);
-    pole.position.set(
-      FINISH.p[0] + Math.cos(FINISH.angle) * gateWidth * side,
-      2.6,
-      FINISH.p[2] - Math.sin(FINISH.angle) * gateWidth * side,
-    );
+    pole.position.set(px, elevation(px, pz) + 2.6, pz);
     pole.castShadow = true;
     root.add(pole);
   }
@@ -532,7 +575,7 @@ export function buildScene(
       side: THREE.DoubleSide,
     }),
   );
-  banner.position.set(FINISH.p[0], 4.1, FINISH.p[2]);
+  banner.position.set(FINISH.p[0], finishY + 4.1, FINISH.p[2]);
   banner.rotation.y = FINISH.angle;
   root.add(banner);
 

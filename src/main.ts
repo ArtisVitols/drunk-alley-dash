@@ -21,10 +21,11 @@ import {
   RemoteCar,
   applyCarWobble,
   carRadius,
+  slopePitch,
   syncCarPassengers,
 } from './game/car';
 import { RoadObstacles } from './game/obstacles';
-import { FINISH, GATE_Z, roadSurface, sampleRoad } from './game/road';
+import { FINISH, GATE_Z, elevation, roadSurface, sampleRoad } from './game/road';
 import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
@@ -479,11 +480,12 @@ function applyState(state: WorldState, t: number) {
       scene.add(entry.mesh);
       bottles.set(b.id, entry);
     }
+    const groundY = elevation(b.p[0], b.p[2]);
     if (entry.mesh.visible && !b.active && state.phase === 'play') {
-      pickupFX.spawn(b.p, BOTTLE_POINTS[b.kind], BOTTLE_GLOW[b.kind]);
+      pickupFX.spawn([b.p[0], groundY, b.p[2]], BOTTLE_POINTS[b.kind], BOTTLE_GLOW[b.kind]);
     }
     entry.mesh.visible = b.active;
-    entry.mesh.position.set(b.p[0], 0.2 + Math.sin(t * 2 + b.id) * 0.08, b.p[2]);
+    entry.mesh.position.set(b.p[0], groundY + 0.2 + Math.sin(t * 2 + b.id) * 0.08, b.p[2]);
     entry.mesh.rotation.y = t * 0.9 + b.id;
   }
   for (const [id, entry] of bottles) {
@@ -550,13 +552,16 @@ function updateCamera(dt: number, t: number) {
   const pz = inCar ? (carMesh ? carMesh.position.z : carCtrl.pos.z) : local.pos.z;
   const ry = inCar ? (carMesh ? carMesh.rotation.y : carCtrl.ry) : local.ry;
   const dist = inCar ? 10 : 6.2;
-  camTarget.set(px - Math.sin(ry) * dist, inCar ? 6.4 : 4.4, pz - Math.cos(ry) * dist);
+  const groundY = elevation(px, pz);
+  camTarget.set(px - Math.sin(ry) * dist, 0, pz - Math.cos(ry) * dist);
   // Keep the chase camera out of buildings (same pushout as bodies)
   collideCircle(camTarget, 1.2, world);
+  // Ride the terrain: camera height follows the ground under it
+  camTarget.y = Math.max(elevation(camTarget.x, camTarget.z), groundY) + (inCar ? 6.4 : 4.4);
   camera.position.lerp(camTarget, 1 - Math.pow(0.0005, dt));
   // Subtle drunk camera roll
   camera.up.set(Math.sin(t * 0.9) * 0.05, 1, 0).normalize();
-  camera.lookAt(px, 1.6, pz);
+  camera.lookAt(px, groundY + 1.6, pz);
 }
 
 // --- Main loop -----------------------------------------------------------------
@@ -596,8 +601,13 @@ renderer.setAnimationLoop(() => {
       myMesh.visible = false;
       const mine = cars.get(myCarId);
       if (mine) {
-        mine.group.position.copy(carCtrl.pos);
+        mine.group.position.set(
+          carCtrl.pos.x,
+          elevation(carCtrl.pos.x, carCtrl.pos.z),
+          carCtrl.pos.z,
+        );
         mine.group.rotation.y = carCtrl.ry;
+        mine.group.rotation.x = slopePitch(carCtrl.pos.x, carCtrl.pos.z, carCtrl.ry);
         applyCarWobble(mine.group, t, dt, carCtrl.speed);
       }
     } else if (myCarId !== null) {
@@ -606,7 +616,7 @@ renderer.setAnimationLoop(() => {
     } else {
       local.update(dt, fwd, turn, world, circles, roadAabbs);
       myMesh.visible = true;
-      myMesh.position.copy(local.pos);
+      myMesh.position.set(local.pos.x, elevation(local.pos.x, local.pos.z), local.pos.z);
       myMesh.rotation.y = local.ry;
       applyWobble(myMesh, t, local.moving);
     }
@@ -682,6 +692,10 @@ renderer.setAnimationLoop(() => {
   get surface(): string {
     const pose = currentPose();
     return roadSurface(pose.p[0], pose.p[2]);
+  },
+  get alt(): number {
+    const pose = currentPose();
+    return elevation(pose.p[0], pose.p[2]);
   },
   get phase(): string {
     return latestState?.phase ?? 'lobby';

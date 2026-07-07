@@ -31,16 +31,21 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   (`LocalController` walking, `CarController` driving in `src/game/car.ts`) and
   reports positions; the host trusts drivers/walkers, pins passengers to cars,
   and resolves pickups/seats/scores.
-- **Cars**: 4 kinds (sedan/van/rv/truck), always spawned, up to 4 occupants;
-  `occupants[0]` drives (rendered invisible), the rest are window/bed passenger
-  meshes (`syncCarPassengers`). Driver exit promotes the next occupant. Cars
-  collide with each other and walkers as circles (`collideCircles`).
-- **Road trip** (`src/game/road.ts` = shared curve/surface math,
+- **The RV**: the single vehicle (CAR_SPAWNS has one 'rv' entry at (0, 42));
+  up to 4 occupants; `occupants[0]` drives (rendered invisible), the rest are
+  window passenger meshes (`syncCarPassengers`). Driver exit promotes the next
+  occupant. Vehicle↔walker collision via circles (`collideCircles`); other
+  car kinds' builders remain in `car.ts` but never spawn.
+- **Road trip** (`src/game/road.ts` = shared curve/surface/elevation math,
   `src/game/obstacles.ts` = meshes/AABBs): the city gate opens onto a winding
-  road to the ROUTE 65 finish. 5 host-owned obstacles block it; on-foot players
-  within 6 m auto-work them (proximity only, no input — mobile hold gestures
-  proved unreliable), more workers = faster. Any occupied car past the finish →
-  `phase: 'won'`; host restart resets obstacles/cars/players.
+  road over hills to the ROUTE 65 finish. Terrain height = `elevation(x, z)`
+  (flat in city, sine hills beyond; y is always derived client-side — the
+  network still sends y = 0). `clampToRoadCorridor` in `collideCircle` walls
+  everyone into the road corridor past the gate (forest wall) so the RV can't
+  drive around the 5 host-owned obstacles; on-foot players within 6 m
+  auto-work them (proximity only, no input — mobile hold gestures proved
+  unreliable), more workers = faster. The RV past the finish with anyone
+  aboard → `phase: 'won'`; host restart resets everything.
 - **Scene** (`src/game/scene.ts`): built per day/night mode into a disposable
   group — `setMode` in `main.ts` swaps it live; players/bottles/FX live directly
   on the scene and survive. Collision = rectangular world bounds + AABB obstacle

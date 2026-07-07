@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../net/network';
 import type { Obstacle, WorldGeom } from './scene';
+import { clampToRoadCorridor, elevation } from './road';
 
 export const PLAYER_COLORS = [0xff8c42, 0x7ddf64, 0x53a2ff, 0xff5d8f];
 
@@ -291,6 +292,8 @@ export function collideCircle(
   if (clampedX !== pos.x || clampedZ !== pos.z) hit = true;
   pos.x = clampedX;
   pos.z = clampedZ;
+  // Countryside: the forest wall keeps everyone in the road corridor
+  if (clampToRoadCorridor(pos, radius)) hit = true;
   const all = extraObstacles ? world.obstacles.concat(extraObstacles) : world.obstacles;
   for (const o of all) {
     const cx = Math.min(o.x + o.hx, Math.max(o.x - o.hx, pos.x));
@@ -360,7 +363,8 @@ export class RemoteAvatar {
   }
 
   setTarget(p: Vec3, ry: number, moving: boolean) {
-    this.targetPos.set(p[0], p[1], p[2]);
+    // y is derived from terrain, never from the network
+    this.targetPos.set(p[0], elevation(p[0], p[2]), p[2]);
     this.targetRy = ry;
     this.moving = moving;
     if (!this.hasTarget) {
