@@ -49,6 +49,15 @@ body {
   position: fixed;
   inset: 0;
   pointer-events: none;
+  /* Long-press must never pop the copy/paste callout mid-game */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#ui input {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .hidden {
@@ -290,6 +299,10 @@ button:disabled {
 
 #car-btn {
   pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   position: absolute;
   right: 18px;
   bottom: max(52px, calc(env(safe-area-inset-bottom) + 44px));
@@ -316,6 +329,14 @@ button:disabled {
     padding: 7px 10px;
     font-size: 13px;
     min-width: 120px;
+  }
+
+  #route-label {
+    top: auto;
+    bottom: max(52px, calc(env(safe-area-inset-bottom) + 44px));
+    left: 18px;
+    transform: none;
+    font-size: 13px;
   }
 
   #help {

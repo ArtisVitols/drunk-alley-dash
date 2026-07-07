@@ -244,20 +244,30 @@ function updateCarButton() {
   if (mode !== 'work') working = false;
 }
 
-// Tap = car in/out; press-and-hold = clear the obstacle
-carBtn.addEventListener('pointerdown', () => {
+// Tap = car in/out; press-and-hold = clear the obstacle. All handled
+// on raw pointer events (no click) so we can suppress the browser's
+// long-press text-selection / context menu on phones.
+let btnPressed = false;
+carBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  btnPressed = true;
+  carBtn.setPointerCapture(e.pointerId);
   if (btnMode === 'work') working = true;
 });
-carBtn.addEventListener('pointerup', () => {
+carBtn.addEventListener('pointerup', (e) => {
+  e.preventDefault();
   working = false;
-});
-carBtn.addEventListener('pointercancel', () => {
-  working = false;
-});
-carBtn.addEventListener('click', () => {
+  if (!btnPressed) return;
+  btnPressed = false;
   if (btnMode === 'exit') requestCar(false);
   else if (btnMode === 'enter' || btnMode === 'drive') requestCar(true);
 });
+carBtn.addEventListener('pointercancel', () => {
+  btnPressed = false;
+  working = false;
+});
+carBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     if (myCarId !== null) requestCar(false);
