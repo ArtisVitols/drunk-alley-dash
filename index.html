@@ -46,10 +46,19 @@
 
       <div id="hud" class="hidden">
         <div id="scores"></div>
-        <div id="help">W/S move &nbsp; A/D turn &nbsp; E car in/out &nbsp;·&nbsp; 🍺 alus +1 &nbsp; 🍷 vynas +2 &nbsp; 🥃 degtinė +3</div>
+        <div id="route-label" class="hidden"></div>
+        <div id="help">W/S move &nbsp; A/D turn &nbsp; E car / hold E to clear &nbsp;·&nbsp; 🍺 alus +1 &nbsp; 🍷 vynas +2 &nbsp; 🥃 degtinė +3</div>
       </div>
 
       <button id="car-btn" class="hidden">🚗 Hop in</button>
+
+      <div id="won" class="panel hidden">
+        <h2>🏁 ROUTE 65! Į sveikatą!</h2>
+        <p class="tag">The team made it out of town alive</p>
+        <ol id="won-scores"></ol>
+        <button id="again-btn" class="hidden">Drive again</button>
+        <p id="won-note" class="tag"></p>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

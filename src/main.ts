@@ -12,9 +12,19 @@ import {
   applyWobble,
   collideCircle,
   createPlayerMesh,
+  type Circle,
 } from './game/player';
+import type { Obstacle } from './game/scene';
 import { BOTTLE_GLOW, createBottleMesh } from './game/pickups';
-import { CarController, RemoteCar, applyCarWobble, syncCarPassengers } from './game/car';
+import {
+  CarController,
+  RemoteCar,
+  applyCarWobble,
+  carRadius,
+  syncCarPassengers,
+} from './game/car';
+import { RoadObstacles } from './game/obstacles';
+import { FINISH, GATE_Z, roadSurface, sampleRoad } from './game/road';
 import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
@@ -76,6 +86,8 @@ let world = buildScene(scene, renderer, 'day');
 let rain: Rain | null = null; // night-only
 let steams = world.steamVents.map((vent) => new Steam(scene, vent));
 const pickupFX = new PickupFX(scene);
+const roadObs = new RoadObstacles(scene);
+let roadAabbs: Obstacle[] = [];
 const hud = new HUD();
 
 function setMode(mode: SceneMode) {
@@ -189,25 +201,72 @@ function requestCar(enter: boolean) {
   else clientRoom?.sendCar(enter);
 }
 
-function updateCarButton() {
-  const near = latestState?.phase === 'play' ? nearCarWithSeat() : null;
-  if (latestState?.phase === 'play' && myCarId !== null) {
-    carBtn.textContent = '🚪 Get out';
-    carBtn.classList.remove('hidden');
-  } else if (near) {
-    carBtn.textContent = near.occupied ? '🚗 Hop in' : '🚗 Drive';
-    carBtn.classList.remove('hidden');
-  } else {
-    carBtn.classList.add('hidden');
+// Uncleared road obstacle within working reach (on foot only)
+function nearObstacle(): boolean {
+  if (!latestState || myCarId !== null) return false;
+  for (const ob of latestState.roadObstacles) {
+    if (ob.cleared) continue;
+    const dx = local.pos.x - ob.p[0];
+    const dz = local.pos.z - ob.p[2];
+    // Matches the host's WORK_RADIUS (obstacles are ~4.2 half-long)
+    if (dx * dx + dz * dz < 6.0 * 6.0) return true;
   }
+  return false;
 }
 
-carBtn.addEventListener('click', () => requestCar(myCarId === null));
+type BtnMode = 'exit' | 'work' | 'enter' | 'drive' | null;
+let btnMode: BtnMode = null;
+
+function updateCarButton() {
+  let mode: BtnMode = null;
+  if (latestState?.phase === 'play') {
+    if (myCarId !== null) mode = 'exit';
+    else if (nearObstacle()) mode = 'work';
+    else {
+      const near = nearCarWithSeat();
+      if (near) mode = near.occupied ? 'enter' : 'drive';
+    }
+  }
+  if (mode !== btnMode) {
+    btnMode = mode;
+    if (mode === null) {
+      carBtn.classList.add('hidden');
+      working = false;
+    } else {
+      carBtn.textContent =
+        mode === 'exit' ? '🚪 Get out'
+        : mode === 'work' ? '🛠 Hold to clear'
+        : mode === 'enter' ? '🚗 Hop in'
+        : '🚗 Drive';
+      carBtn.classList.remove('hidden');
+    }
+  }
+  if (mode !== 'work') working = false;
+}
+
+// Tap = car in/out; press-and-hold = clear the obstacle
+carBtn.addEventListener('pointerdown', () => {
+  if (btnMode === 'work') working = true;
+});
+carBtn.addEventListener('pointerup', () => {
+  working = false;
+});
+carBtn.addEventListener('pointercancel', () => {
+  working = false;
+});
+carBtn.addEventListener('click', () => {
+  if (btnMode === 'exit') requestCar(false);
+  else if (btnMode === 'enter' || btnMode === 'drive') requestCar(true);
+});
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     if (myCarId !== null) requestCar(false);
+    else if (nearObstacle()) working = true;
     else if (nearCarWithSeat()) requestCar(true);
   }
+});
+window.addEventListener('keyup', (e) => {
+  if (e.code === 'KeyE') working = false;
 });
 
 // --- Session state ----------------------------------------------------------
@@ -225,6 +284,7 @@ const local = new LocalController();
 const carCtrl = new CarController();
 let myCarId: number | null = null;
 let amDriver = false;
+let working = false; // holding the clear-obstacle action
 let myMesh: THREE.Group | null = null;
 
 const remotes = new Map<string, RemoteAvatar>();
@@ -250,7 +310,7 @@ async function createRoom(name: string, mode: SceneMode) {
     sim.removePlayer(id);
     hud.updateLobby(sim.state.players);
   };
-  room.onPos = (id, p, ry, moving) => sim.setPos(id, p, ry, moving);
+  room.onPos = (id, p, ry, moving, isWorking) => sim.setPos(id, p, ry, moving, isWorking);
   room.onCar = (id, enter) => sim.requestCar(id, enter);
   host = { room, sim };
   myId = room.myId;
@@ -276,21 +336,27 @@ async function joinRoom(code: string, name: string) {
   };
   setInterval(() => {
     const pose = currentPose();
-    room.sendPos(pose.p, pose.ry, pose.moving);
+    room.sendPos(pose.p, pose.ry, pose.moving, pose.working);
   }, SEND_INTERVAL_MS);
   enterRoom(room.colorIndex, name, code, false);
 }
 
-function currentPose(): { p: Vec3; ry: number; moving: boolean } {
+function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean } {
   if (myCarId !== null && amDriver) {
     return {
       p: [carCtrl.pos.x, 0, carCtrl.pos.z],
       ry: carCtrl.ry,
       moving: Math.abs(carCtrl.speed) > 0.3,
+      working: false,
     };
   }
   // Passengers' reports are ignored by the host (pinned to the car)
-  return { p: [local.pos.x, 0, local.pos.z], ry: local.ry, moving: local.moving };
+  return {
+    p: [local.pos.x, 0, local.pos.z],
+    ry: local.ry,
+    moving: local.moving,
+    working,
+  };
 }
 
 hud.onCreate = async (name, mode) => {
@@ -318,6 +384,7 @@ hud.onJoin = async (code, name) => {
 };
 
 hud.onStart = () => host?.sim.startRound();
+hud.onAgain = () => host?.sim.startRound();
 
 // --- World state → scene -----------------------------------------------------
 
@@ -391,6 +458,9 @@ function applyState(state: WorldState, t: number) {
     }
   }
 
+  roadObs.sync(state.roadObstacles);
+  roadAabbs = roadObs.aabbs(state.roadObstacles);
+
   const seenCars = new Set<number>();
   for (const c of state.cars) {
     seenCars.add(c.id);
@@ -428,6 +498,8 @@ function onPhaseChange(state: WorldState) {
       local.ry = me.ry;
     }
     hud.showPlaying();
+  } else if (state.phase === 'won') {
+    hud.showWon(state.players);
   }
 }
 
@@ -465,6 +537,7 @@ renderer.setAnimationLoop(() => {
   rain?.update(dt);
   for (const steam of steams) steam.update(dt);
   pickupFX.update(dt);
+  roadObs.update(dt);
 
   if (inRoom && myMesh) {
     if (latestState) applyState(latestState, t);
@@ -474,8 +547,17 @@ renderer.setAnimationLoop(() => {
       fwd = joy.fwd;
       turn = joy.turn;
     }
+    // Other cars are round blockers; uncleared road junk blocks too
+    const circles: Circle[] = [];
+    if (latestState) {
+      for (const c of latestState.cars) {
+        if (c.id === myCarId) continue;
+        circles.push({ x: c.p[0], z: c.p[2], r: carRadius(c.kind) });
+      }
+    }
     if (myCarId !== null && amDriver) {
-      carCtrl.update(dt, fwd, turn, world);
+      const surface = roadSurface(carCtrl.pos.x, carCtrl.pos.z);
+      carCtrl.update(dt, fwd, turn, world, circles, roadAabbs, surface);
       myMesh.visible = false;
       const mine = cars.get(myCarId);
       if (mine) {
@@ -487,7 +569,7 @@ renderer.setAnimationLoop(() => {
       // Passenger: the car is driven elsewhere; we just hang out the window
       myMesh.visible = false;
     } else {
-      local.update(dt, fwd, turn, world);
+      local.update(dt, fwd, turn, world, circles, roadAabbs);
       myMesh.visible = true;
       myMesh.position.copy(local.pos);
       myMesh.rotation.y = local.ry;
@@ -495,11 +577,20 @@ renderer.setAnimationLoop(() => {
     }
     if (host) {
       const pose = currentPose();
-      host.sim.setPos(myId, pose.p, pose.ry, pose.moving);
+      host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working);
       host.sim.tick(dt);
     }
     updateCarButton();
     updateCamera(dt, t);
+    // Shadows follow whoever we are; the world is too long for one map
+    const pose = currentPose();
+    world.focusShadow(pose.p[0], pose.p[2]);
+    // Distance readout once out of town
+    if (latestState?.phase === 'play' && pose.p[2] > GATE_Z - 20) {
+      hud.setRouteLabel(`ROUTE 65 — ${Math.max(0, Math.round(FINISH.p[2] - pose.p[2]))} m`);
+    } else {
+      hud.setRouteLabel(null);
+    }
   } else {
     // Menu backdrop: slow drift through the alley
     camera.position.set(Math.sin(t * 0.08) * 5, 5.5, Math.cos(t * 0.11) * 10);
@@ -552,10 +643,44 @@ renderer.setAnimationLoop(() => {
       seats: c.occupants.length,
     }));
   },
-  // Test-only teleport, active with ?dev=1 (no-op otherwise)
+  get surface(): string {
+    const pose = currentPose();
+    return roadSurface(pose.p[0], pose.p[2]);
+  },
+  get phase(): string {
+    return latestState?.phase ?? 'lobby';
+  },
+  get working(): boolean {
+    return working;
+  },
+  get obstacles(): {
+    id: number;
+    kind: string;
+    progress: number;
+    cleared: boolean;
+    pos: [number, number];
+  }[] {
+    return (latestState?.roadObstacles ?? []).map((ob) => ({
+      id: ob.id,
+      kind: ob.kind,
+      progress: ob.progress,
+      cleared: ob.cleared,
+      pos: [ob.p[0], ob.p[2]],
+    }));
+  },
+  // Road centerline sample for tests (t in 0..1)
+  roadPoint(t: number): [number, number] {
+    const sample = sampleRoad(Math.min(1, Math.max(0, t)));
+    return [sample.p[0], sample.p[2]];
+  },
+  // Test-only teleport, active with ?dev=1 (no-op otherwise); also
+  // moves the car when driving, so tests can reach the finish.
   teleport(x: number, z: number, ry?: number) {
     if (!new URLSearchParams(location.search).has('dev')) return;
-    if (myCarId === null) {
+    if (myCarId !== null && amDriver) {
+      carCtrl.pos.set(x, 0, z);
+      if (ry !== undefined) carCtrl.ry = ry;
+    } else if (myCarId === null) {
       local.pos.set(x, 0, z);
       if (ry !== undefined) local.ry = ry;
     }

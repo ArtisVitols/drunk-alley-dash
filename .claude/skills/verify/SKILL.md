@@ -58,7 +58,18 @@ a00b27b8; recreate from this outline if gone:
    3.2 m → press E (or click it) → `__dad.car` non-null. Up to 4 per car:
    occupants[0] drives (`__dad.driver`), the rest are window passengers
    pinned to the car; when the driver exits the next occupant is promoted.
-   Use `?dev=1` + `__dad.teleport` to skip the long walk to the cars.
+   Use `?dev=1` + `__dad.teleport(x, z, ry?)` to skip the long walk — it
+   moves the car too while driving. Cars collide as circles: expect glancing
+   slides around each other, never overlap below the radii sum.
+7. Road trip: `__dad.obstacles` (5, host resets them per run), `__dad.surface`
+   (city/asphalt/sand/grass — use `__dad.roadPoint(t)` for on-road coords),
+   `__dad.phase`. Clearing: stand within 6 m of an uncleared obstacle on
+   foot, hold E → `__dad.working` true → progress climbs (solo 15 sim-secs —
+   minutes of wall time under SwiftShader; use ~240 s timeouts). Win: drive
+   any occupied car past `roadPoint(0.99)` → phase `'won'`, `#won` overlay,
+   host's `#again-btn` restarts. NOTE: on the host, `__dad`'s state flips
+   before the next render frame — wait for DOM/overlay changes, don't read
+   them instantly after a phase flip.
 6. Disconnect probe: close browser B; A's scoreboard must drop to 1 row
    within ~5 s (heartbeat timeout in `src/net/peer.ts`).
 

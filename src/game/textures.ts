@@ -104,6 +104,86 @@ export function brickTexture(repeatX: number, repeatY: number, hue: number, sat:
   return toTexture(canvas, repeatX, repeatY);
 }
 
+// Sandy country road: warm beige base with grit and dark tire tracks
+// running along the V axis (the road ribbon maps V along its length).
+export function sandTextures(repeatX: number, repeatY: number) {
+  const { canvas, ctx } = makeCanvas();
+  ctx.fillStyle = '#c9ab72';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 4500; i++) {
+    const v = 140 + Math.random() * 90;
+    ctx.fillStyle = `rgba(${v},${v * 0.85},${v * 0.55},${0.2 + Math.random() * 0.3})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+  // Twin tire tracks with wobble
+  for (const cx of [160, 352]) {
+    ctx.strokeStyle = 'rgba(90,70,40,0.5)';
+    ctx.lineWidth = 26;
+    ctx.beginPath();
+    ctx.moveTo(cx, -10);
+    for (let y = 0; y <= 512; y += 32) {
+      ctx.lineTo(cx + Math.sin(y * 0.05) * 8 + (Math.random() - 0.5) * 6, y);
+    }
+    ctx.stroke();
+  }
+  // Scattered pebbles
+  for (let i = 0; i < 60; i++) {
+    ctx.fillStyle = `rgba(110,95,70,${0.4 + Math.random() * 0.3})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 512, Math.random() * 512, 2 + Math.random() * 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return {
+    map: toTexture(canvas, repeatX, repeatY),
+    bumpMap: toTexture(canvas, repeatX, repeatY, false),
+  };
+}
+
+// Countryside grass: layered green noise with lighter blade flecks.
+export function grassTexture(repeatX: number, repeatY: number) {
+  const { canvas, ctx } = makeCanvas();
+  ctx.fillStyle = '#4d7a38';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 6000; i++) {
+    const g = 100 + Math.random() * 70;
+    ctx.fillStyle = `rgba(${g * 0.45},${g},${g * 0.35},${0.25 + Math.random() * 0.3})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 1 + Math.random() * 2, 2 + Math.random() * 3);
+  }
+  // Dry patches
+  for (let i = 0; i < 8; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 30 + Math.random() * 60;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(150,140,80,0.25)');
+    g.addColorStop(1, 'rgba(150,140,80,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  return toTexture(canvas, repeatX, repeatY);
+}
+
+// Green highway sign, white border and text — the ROUTE 65 banner.
+export function signTexture(text: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 160;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#1a6b34';
+  ctx.fillRect(0, 0, 512, 160);
+  ctx.strokeStyle = '#f2f0e8';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(10, 10, 492, 140);
+  ctx.font = '900 72px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f2f0e8';
+  ctx.fillText(text, 256, 80);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 // City building facade: plaster/brick base with a grid of windows.
 // At night a fraction of windows glow warm.
 export function facadeTexture(hue: number, sat: number, light: number, litProb: number) {

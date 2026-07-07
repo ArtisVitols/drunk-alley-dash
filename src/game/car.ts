@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { CarKind, PlayerState, Vec3 } from '../net/network';
-import type { WorldGeom } from './scene';
-import { PLAYER_COLORS, collideCircle } from './player';
+import type { Obstacle, WorldGeom } from './scene';
+import type { Circle } from './player';
+import { PLAYER_COLORS, collideCircle, collideCircles } from './player';
 
 // Per-kind handling: the sedan is nimble, the RV is a drunk whale.
 const CAR_STATS: Record<
@@ -15,6 +16,10 @@ const CAR_STATS: Record<
 };
 
 const DRAG = 0.55;
+
+export const carRadius = (kind: CarKind) => CAR_STATS[kind].radius;
+
+export type Surface = 'city' | 'asphalt' | 'sand' | 'grass';
 
 interface Slot {
   anchor: THREE.Group;
@@ -310,23 +315,37 @@ export class CarController {
     this.stats = CAR_STATS[kind];
   }
 
-  update(dt: number, throttle: number, steer: number, world: WorldGeom) {
+  update(
+    dt: number,
+    throttle: number,
+    steer: number,
+    world: WorldGeom,
+    circles: Circle[] = [],
+    extraObstacles?: Obstacle[],
+    surface: Surface = 'city',
+  ) {
     const s = this.stats;
+    // Grass bogs the car down; keep to the road
+    const maxSpeed = surface === 'grass' ? s.max * 0.35 : s.max;
     this.speed += throttle * s.accel * dt;
     this.speed -= this.speed * DRAG * dt;
-    this.speed = Math.min(s.max, Math.max(-s.reverse, this.speed));
+    this.speed = Math.min(maxSpeed, Math.max(-s.reverse, this.speed));
     if (Math.abs(this.speed) < 0.05 && throttle === 0) this.speed = 0;
 
     const grip = Math.min(1, Math.abs(this.speed) / 7);
     // Steering only bites when rolling; reversing flips it like a real car
     this.ry += steer * s.turn * grip * Math.sign(this.speed || 1) * dt;
-    // Drunk at the wheel: the car pulls side to side on its own
+    // Drunk at the wheel: the car pulls side to side on its own —
+    // worse on loose sand
     this.swayClock += dt;
-    this.ry += Math.sin(this.swayClock * 1.4) * s.sway * grip * dt;
+    const sway = s.sway * (surface === 'sand' ? 1.35 : 1);
+    this.ry += Math.sin(this.swayClock * 1.4) * sway * grip * dt;
 
     this.pos.x += Math.sin(this.ry) * this.speed * dt;
     this.pos.z += Math.cos(this.ry) * this.speed * dt;
-    if (collideCircle(this.pos, s.radius, world)) {
+    const hitWorld = collideCircle(this.pos, s.radius, world, extraObstacles);
+    const hitCars = collideCircles(this.pos, s.radius, circles);
+    if (hitWorld || hitCars) {
       this.speed *= Math.pow(0.02, dt); // crunch — bleed speed fast
     }
   }

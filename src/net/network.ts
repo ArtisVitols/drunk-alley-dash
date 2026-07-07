@@ -8,7 +8,7 @@ export const BOTTLE_POINTS: Record<BottleKind, number> = {
   vodka: 3,
 };
 
-export type Phase = 'lobby' | 'play';
+export type Phase = 'lobby' | 'play' | 'won';
 
 export type SceneMode = 'day' | 'night';
 
@@ -19,8 +19,20 @@ export interface PlayerState {
   p: Vec3;
   ry: number;
   moving: boolean;
+  working: boolean;
   score: number;
   car: number | null;
+}
+
+export type RoadObstacleKind = 'log' | 'boulders' | 'roadblock' | 'junk';
+
+export interface RoadObstacleState {
+  id: number;
+  kind: RoadObstacleKind;
+  p: Vec3;
+  ry: number;
+  progress: number;
+  cleared: boolean;
 }
 
 export type CarKind = 'sedan' | 'van' | 'rv' | 'truck';
@@ -58,11 +70,12 @@ export interface WorldState {
   players: PlayerState[];
   bottles: BottleState[];
   cars: CarState[];
+  roadObstacles: RoadObstacleState[];
 }
 
 export type ClientMsg =
   | { t: 'hi'; name: string }
-  | { t: 'pos'; p: Vec3; ry: number; moving: boolean }
+  | { t: 'pos'; p: Vec3; ry: number; moving: boolean; working: boolean }
   | { t: 'car'; enter: boolean };
 
 export type HostMsg =

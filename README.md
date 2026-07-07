@@ -27,13 +27,23 @@ Walking drunk means your heading drifts on its own — deal with it.
 **Cars:** the alley opens onto a small city — a few blocks of streets. Four
 rides are always parked at the alley exit: a nimble **sedan**, a boxy **van**,
 a lumbering **RV**, and a **pickup truck** with an open bed — each drives
-differently. Walk up and press **E** (or tap the **🚗** button) to hop in;
-press **E** / tap **🚪** to get out. Up to 4 people fit in one car: the first
-in drives (invisible — busy steering), everyone else hangs out of the windows
-waving their bottles (truck passengers party standing in the bed). If the
-driver bails, the next passenger inherits the wheel. Only drivers and walkers
-collect bottles — driving grabs them in a wider radius, but most bottles hide
-in the alley on foot.
+differently, and they collide with each other (and with you). Walk up and
+press **E** (or tap the **🚗** button) to hop in; press **E** / tap **🚪** to
+get out. Up to 4 people fit in one car: the first in drives (invisible — busy
+steering), everyone else hangs out of the windows waving their bottles (truck
+passengers party standing in the bed). If the driver bails, the next passenger
+inherits the wheel. Only drivers and walkers collect bottles — driving grabs
+them in a wider radius, but most bottles hide in the alley on foot.
+
+**The road to ROUTE 65 (co-op):** the city's north gate opens onto a winding
+country road — asphalt at first, then a sandy track through green fields and
+pines. The road is blocked by junk: roadblocks, fallen logs, boulder piles.
+The team hops out and **holds E / the 🛠 button** at an obstacle to clear it —
+much faster together (solo ~15 s, full crew ~4 s). Off-road grass bogs cars
+down, sand makes the drunk swerving worse, and a distance readout counts down
+to the **ROUTE 65** junction. Get any occupied vehicle there (the RV fits the
+whole team) and the run is won — the host can start a fresh run from the
+victory screen. Bottles are strewn along the route, so keep gathering.
 
 ## Develop
 

@@ -2,7 +2,24 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SceneMode, Vec3 } from '../net/network';
-import { asphaltTextures, brickTexture, facadeTexture, neonTexture } from './textures';
+import {
+  ASPHALT_END_T,
+  FINISH,
+  GATE_Z,
+  ROAD_HALF_WIDTH,
+  distanceToRoad,
+  roadCurve,
+  sampleRoad,
+} from './road';
+import {
+  asphaltTextures,
+  brickTexture,
+  facadeTexture,
+  grassTexture,
+  neonTexture,
+  sandTextures,
+  signTexture,
+} from './textures';
 
 export interface Obstacle {
   x: number;
@@ -24,6 +41,9 @@ export interface WorldGeom {
   bounds: Bounds;
   steamVents: Vec3[];
   updateFlicker(t: number): void;
+  // Keep the (small) shadow frustum centered on the local player —
+  // the world is far too long to cover with one static shadow map.
+  focusShadow(x: number, z: number): void;
   dispose(): void;
 }
 
@@ -43,6 +63,10 @@ const CITY_BLOCKS: { x: number; z: number; h: number }[] = [
 ];
 const BLOCK_HALF = 14;
 
+// Past the city gate: countryside with the winding road to ROUTE 65.
+const WORLD_HALF_WIDTH = 60;
+const WORLD_MAX_Z = 458;
+
 // Builds the whole alley for one time-of-day into a disposable group,
 // so the host's day/night choice can swap the environment live while
 // players, bottles and FX (added directly to the scene) survive.
@@ -58,7 +82,7 @@ export function buildScene(
   scene.background = new THREE.Color(night ? 0x07070d : 0x9fb6d8);
   scene.fog = night
     ? new THREE.FogExp2(0x07070d, 0.019)
-    : new THREE.FogExp2(0xa8b8cc, 0.009);
+    : new THREE.FogExp2(0xa8b8cc, 0.007);
 
   // Subtle image-based lighting so materials get specular life
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -208,7 +232,9 @@ export function buildScene(
   tower.castShadow = true;
   root.add(tower, towerRoof);
 
-  // Perimeter wall around the city
+  // Perimeter wall around the city — now real obstacles, since the
+  // world bounds extend past them into the countryside. The north wall
+  // splits in two, leaving the gate where the road begins.
   const perimMat = new THREE.MeshStandardMaterial({ color: 0x565a5e, roughness: 0.95 });
   const sideLen = CITY_MAX_Z - ALLEY_HALF_LENGTH + 1;
   for (const side of [-1, 1] as const) {
@@ -216,14 +242,196 @@ export function buildScene(
     wall.position.set(side * (CITY_HALF_WIDTH + 0.6), 1.5, (CITY_MAX_Z + ALLEY_HALF_LENGTH) / 2);
     wall.receiveShadow = true;
     root.add(wall);
+    obstacles.push({
+      x: side * (CITY_HALF_WIDTH + 0.6),
+      z: (CITY_MAX_Z + ALLEY_HALF_LENGTH) / 2,
+      hx: 0.7,
+      hz: sideLen / 2,
+    });
+    // Dead strip between the city wall and the world edge, south of
+    // the countryside — block it off invisibly.
+    obstacles.push({
+      x: side * ((CITY_HALF_WIDTH + WORLD_HALF_WIDTH) / 2 + 1),
+      z: (GATE_Z - ALLEY_HALF_LENGTH) / 2,
+      hx: (WORLD_HALF_WIDTH - CITY_HALF_WIDTH) / 2 + 1,
+      hz: (GATE_Z + ALLEY_HALF_LENGTH) / 2,
+    });
   }
-  const backWall = new THREE.Mesh(
-    new THREE.BoxGeometry(CITY_HALF_WIDTH * 2 + 2.4, 3, 1.2),
-    perimMat,
+  const GATE_HALF = 7;
+  for (const side of [-1, 1] as const) {
+    const segW = CITY_HALF_WIDTH - GATE_HALF + 1.2;
+    const seg = new THREE.Mesh(new THREE.BoxGeometry(segW, 3, 1.2), perimMat);
+    const cx = side * (GATE_HALF + segW / 2);
+    seg.position.set(cx, 1.5, CITY_MAX_Z + 0.6);
+    seg.receiveShadow = true;
+    root.add(seg);
+    obstacles.push({ x: cx, z: CITY_MAX_Z + 0.6, hx: segW / 2, hz: 0.7 });
+  }
+
+  // ——— The countryside: grass, the winding road, ROUTE 65 ———————————
+
+  const grass = new THREE.Mesh(
+    new THREE.PlaneGeometry(WORLD_HALF_WIDTH * 2, WORLD_MAX_Z - GATE_Z + 10),
+    new THREE.MeshStandardMaterial({ map: grassTexture(12, 34), roughness: 0.95 }),
   );
-  backWall.position.set(0, 1.5, CITY_MAX_Z + 0.6);
-  backWall.receiveShadow = true;
-  root.add(backWall);
+  grass.rotation.x = -Math.PI / 2;
+  grass.position.set(0, 0.004, (GATE_Z - 4 + WORLD_MAX_Z + 6) / 2);
+  grass.receiveShadow = true;
+  root.add(grass);
+
+  // Road ribbon along the curve; asphalt near town, sand further out
+  const buildRibbon = (
+    t0: number,
+    t1: number,
+    material: THREE.MeshStandardMaterial,
+  ) => {
+    const segs = Math.max(8, Math.round((t1 - t0) * 170));
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = t0 + ((t1 - t0) * i) / segs;
+      const p = roadCurve.getPointAt(t);
+      const tan = roadCurve.getTangentAt(t);
+      const nx = tan.z;
+      const nz = -tan.x;
+      positions.push(
+        p.x + nx * ROAD_HALF_WIDTH, 0.02, p.z + nz * ROAD_HALF_WIDTH,
+        p.x - nx * ROAD_HALF_WIDTH, 0.02, p.z - nz * ROAD_HALF_WIDTH,
+      );
+      normals.push(0, 1, 0, 0, 1, 0);
+      uvs.push(0, t * 40, 1, t * 40);
+      if (i < segs) {
+        const a = i * 2;
+        indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.receiveShadow = true;
+    root.add(mesh);
+  };
+  const roadAsphalt = asphaltTextures(1, 1);
+  buildRibbon(
+    0,
+    ASPHALT_END_T + 0.005,
+    new THREE.MeshStandardMaterial({
+      map: roadAsphalt.map,
+      bumpMap: roadAsphalt.bumpMap,
+      bumpScale: 0.5,
+      roughness: 0.92,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const roadSand = sandTextures(1, 1);
+  buildRibbon(
+    ASPHALT_END_T - 0.005,
+    1,
+    new THREE.MeshStandardMaterial({
+      map: roadSand.map,
+      bumpMap: roadSand.bumpMap,
+      bumpScale: 0.5,
+      roughness: 0.95,
+      side: THREE.DoubleSide,
+    }),
+  );
+
+  // Pines, bushes and rocks scattered off-road (merged for draw calls)
+  const trunkGeos: THREE.BufferGeometry[] = [];
+  const leafGeos: THREE.BufferGeometry[] = [];
+  const bushGeos: THREE.BufferGeometry[] = [];
+  const rockGeos: THREE.BufferGeometry[] = [];
+  let treesPlaced = 0;
+  for (let guard = 0; treesPlaced < 70 && guard < 600; guard++) {
+    const x = -(WORLD_HALF_WIDTH - 3) + Math.random() * (WORLD_HALF_WIDTH - 3) * 2;
+    const z = GATE_Z + 8 + Math.random() * (WORLD_MAX_Z - GATE_Z - 20);
+    if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 3) continue;
+    const s = 0.8 + Math.random() * 0.8;
+    const trunk = new THREE.CylinderGeometry(0.16 * s, 0.24 * s, 1.4 * s, 6);
+    trunk.translate(x, 0.7 * s, z);
+    trunkGeos.push(trunk);
+    const lower = new THREE.ConeGeometry(1.5 * s, 2.6 * s, 7);
+    lower.translate(x, 2.4 * s, z);
+    const upper = new THREE.ConeGeometry(1.05 * s, 2.0 * s, 7);
+    upper.translate(x, 3.7 * s, z);
+    leafGeos.push(lower, upper);
+    treesPlaced++;
+  }
+  for (let i = 0; i < 30; i++) {
+    const x = -(WORLD_HALF_WIDTH - 3) + Math.random() * (WORLD_HALF_WIDTH - 3) * 2;
+    const z = GATE_Z + 6 + Math.random() * (WORLD_MAX_Z - GATE_Z - 14);
+    if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 1.5) continue;
+    const bush = new THREE.IcosahedronGeometry(0.5 + Math.random() * 0.5, 0);
+    bush.scale(1, 0.65, 1);
+    bush.translate(x, 0.35, z);
+    bushGeos.push(bush);
+  }
+  for (let i = 0; i < 14; i++) {
+    const x = -(WORLD_HALF_WIDTH - 4) + Math.random() * (WORLD_HALF_WIDTH - 4) * 2;
+    const z = GATE_Z + 10 + Math.random() * (WORLD_MAX_Z - GATE_Z - 24);
+    if (distanceToRoad(x, z) < ROAD_HALF_WIDTH + 1.2) continue;
+    const rock = new THREE.IcosahedronGeometry(0.4 + Math.random() * 0.7, 0);
+    rock.scale(1.2, 0.7, 1);
+    rock.translate(x, 0.25, z);
+    rockGeos.push(rock);
+  }
+  const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.MeshStandardMaterial) => {
+    if (!geos.length) return;
+    const mesh = new THREE.Mesh(mergeGeometries(geos), mat);
+    mesh.castShadow = true;
+    root.add(mesh);
+  };
+  addMerged(trunkGeos, new THREE.MeshStandardMaterial({ color: 0x5a4128, roughness: 0.9 }));
+  addMerged(leafGeos, new THREE.MeshStandardMaterial({ color: 0x2c5a33, roughness: 0.9 }));
+  addMerged(bushGeos, new THREE.MeshStandardMaterial({ color: 0x3e6b30, roughness: 0.95 }));
+  addMerged(rockGeos, new THREE.MeshStandardMaterial({ color: 0x8a8d90, roughness: 0.9 }));
+
+  // Wooden fence posts along the asphalt stretch
+  const postGeos: THREE.BufferGeometry[] = [];
+  for (let t = 0.015; t < ASPHALT_END_T; t += 0.028) {
+    const s = sampleRoad(t);
+    for (const side of [-1, 1] as const) {
+      const off = (ROAD_HALF_WIDTH + 1.6) * side;
+      const post = new THREE.BoxGeometry(0.14, 1.1, 0.14);
+      post.translate(
+        s.p[0] + Math.cos(s.angle) * off,
+        0.55,
+        s.p[2] - Math.sin(s.angle) * off,
+      );
+      postGeos.push(post);
+    }
+  }
+  addMerged(postGeos, new THREE.MeshStandardMaterial({ color: 0x6b5334, roughness: 0.9 }));
+
+  // ROUTE 65 finish gate
+  const poleMat2 = new THREE.MeshStandardMaterial({ color: 0x88898c, roughness: 0.5, metalness: 0.7 });
+  const gateWidth = ROAD_HALF_WIDTH + 1.4;
+  for (const side of [-1, 1] as const) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 5.2, 8), poleMat2);
+    pole.position.set(
+      FINISH.p[0] + Math.cos(FINISH.angle) * gateWidth * side,
+      2.6,
+      FINISH.p[2] - Math.sin(FINISH.angle) * gateWidth * side,
+    );
+    pole.castShadow = true;
+    root.add(pole);
+  }
+  const banner = new THREE.Mesh(
+    new THREE.PlaneGeometry(gateWidth * 2, 2.1),
+    new THREE.MeshStandardMaterial({
+      map: signTexture('ROUTE 65 →'),
+      roughness: 0.6,
+      side: THREE.DoubleSide,
+    }),
+  );
+  banner.position.set(FINISH.p[0], 4.1, FINISH.p[2]);
+  banner.rotation.y = FINISH.angle;
+  root.add(banner);
 
   // Dashed center lines on the streets — merged into one draw call
   // (SwiftShader/low-end GPUs choke on per-dash meshes)
@@ -646,17 +854,26 @@ export function buildScene(
 
   const margin = 0.8;
   const bounds: Bounds = {
-    minX: -(CITY_HALF_WIDTH - margin),
-    maxX: CITY_HALF_WIDTH - margin,
+    minX: -(WORLD_HALF_WIDTH - margin),
+    maxX: WORLD_HALF_WIDTH - margin,
     minZ: -(ALLEY_HALF_LENGTH - margin),
-    maxZ: CITY_MAX_Z - margin,
+    maxZ: WORLD_MAX_Z - margin,
   };
+
+  const sunOffset = sun.position.clone().sub(sun.target.position);
 
   return {
     mode,
     obstacles,
     bounds,
     steamVents,
+    focusShadow(x: number, z: number) {
+      // Snap to a grid so the shadow map doesn't shimmer as we move
+      const sx = Math.round(x / 8) * 8;
+      const sz = Math.round(z / 8) * 8;
+      sun.target.position.set(sx, 0, sz);
+      sun.position.copy(sun.target.position).add(sunOffset);
+    },
     updateFlicker(t: number) {
       for (const item of flickerItems) {
         let k: number;
@@ -693,17 +910,25 @@ export function buildScene(
 }
 
 export function randomFreePos(geom: WorldGeom): Vec3 {
-  const { bounds, obstacles } = geom;
+  const { obstacles } = geom;
   for (let tries = 0; tries < 60; tries++) {
-    // 40% of bottles land in the alley so on-foot players near spawn
-    // aren't starved; the rest go to the city streets for the drivers.
-    const inAlley = Math.random() < 0.4;
-    const x = inAlley
-      ? -7 + Math.random() * 14
-      : bounds.minX + 0.5 + Math.random() * (bounds.maxX - bounds.minX - 1);
-    const z = inAlley
-      ? -28 + Math.random() * 56
-      : bounds.minZ + 0.5 + Math.random() * (bounds.maxZ - bounds.minZ - 1);
+    // ~30% alley (walkers near spawn), ~30% city streets (drivers),
+    // ~40% strewn along the road to Route 65 (the expedition).
+    const roll = Math.random();
+    let x: number;
+    let z: number;
+    if (roll < 0.3) {
+      x = -7 + Math.random() * 14;
+      z = -28 + Math.random() * 56;
+    } else if (roll < 0.6) {
+      x = -44 + Math.random() * 88;
+      z = 31 + Math.random() * 88;
+    } else {
+      const sample = sampleRoad(Math.random());
+      const off = (Math.random() * 2 - 1) * (ROAD_HALF_WIDTH - 0.8);
+      x = sample.p[0] + Math.cos(sample.angle) * off;
+      z = sample.p[2] - Math.sin(sample.angle) * off;
+    }
     let clear = true;
     for (const o of obstacles) {
       if (Math.abs(x - o.x) < o.hx + 0.7 && Math.abs(z - o.z) < o.hz + 0.7) {

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Vec3 } from '../net/network';
-import type { WorldGeom } from './scene';
+import type { Obstacle, WorldGeom } from './scene';
 
 export const PLAYER_COLORS = [0xff8c42, 0x7ddf64, 0x53a2ff, 0xff5d8f];
 
@@ -249,9 +249,41 @@ export function applyWobble(mesh: THREE.Group, t: number, moving: boolean) {
   }
 }
 
+export interface Circle {
+  x: number;
+  z: number;
+  r: number;
+}
+
+// Circle-vs-circle pushout (cars against cars, walkers against cars).
+export function collideCircles(pos: THREE.Vector3, radius: number, circles: Circle[]): boolean {
+  let hit = false;
+  for (const c of circles) {
+    const dx = pos.x - c.x;
+    const dz = pos.z - c.z;
+    const min = radius + c.r;
+    const d2 = dx * dx + dz * dz;
+    if (d2 >= min * min) continue;
+    hit = true;
+    const d = Math.sqrt(d2);
+    if (d > 1e-4) {
+      pos.x = c.x + (dx / d) * min;
+      pos.z = c.z + (dz / d) * min;
+    } else {
+      pos.x = c.x + min;
+    }
+  }
+  return hit;
+}
+
 // Circle-vs-world collision shared by walkers and cars. Returns true
 // if the position had to be corrected (something was hit).
-export function collideCircle(pos: THREE.Vector3, radius: number, world: WorldGeom): boolean {
+export function collideCircle(
+  pos: THREE.Vector3,
+  radius: number,
+  world: WorldGeom,
+  extraObstacles?: Obstacle[],
+): boolean {
   let hit = false;
   const b = world.bounds;
   const clampedX = Math.min(b.maxX, Math.max(b.minX, pos.x));
@@ -259,7 +291,8 @@ export function collideCircle(pos: THREE.Vector3, radius: number, world: WorldGe
   if (clampedX !== pos.x || clampedZ !== pos.z) hit = true;
   pos.x = clampedX;
   pos.z = clampedZ;
-  for (const o of world.obstacles) {
+  const all = extraObstacles ? world.obstacles.concat(extraObstacles) : world.obstacles;
+  for (const o of all) {
     const cx = Math.min(o.x + o.hx, Math.max(o.x - o.hx, pos.x));
     const cz = Math.min(o.z + o.hz, Math.max(o.z - o.hz, pos.z));
     const dx = pos.x - cx;
@@ -289,8 +322,16 @@ export class LocalController {
   private swayClock = Math.random() * 10;
 
   // fwd/turn are analog axes in [-1, 1]: keyboard sends ±1, the
-  // touch joystick sends fractional values.
-  update(dt: number, fwd: number, turn: number, world: WorldGeom) {
+  // touch joystick sends fractional values. `circles` are dynamic
+  // round blockers (cars); `extraObstacles` dynamic AABBs (road junk).
+  update(
+    dt: number,
+    fwd: number,
+    turn: number,
+    world: WorldGeom,
+    circles: Circle[] = [],
+    extraObstacles?: Obstacle[],
+  ) {
     this.ry += turn * TURN_SPEED * dt;
 
     this.moving = Math.abs(fwd) > 0.08;
@@ -302,7 +343,8 @@ export class LocalController {
       this.pos.x += Math.sin(this.ry) * step;
       this.pos.z += Math.cos(this.ry) * step;
     }
-    collideCircle(this.pos, BODY_RADIUS, world);
+    collideCircle(this.pos, BODY_RADIUS, world, extraObstacles);
+    collideCircles(this.pos, BODY_RADIUS, circles);
   }
 }
 

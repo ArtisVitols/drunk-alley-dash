@@ -21,7 +21,8 @@ type PeerError = Error & { type?: string };
 export class HostRoom {
   onJoin: (id: string, name: string) => number | null = () => null;
   onLeave: (id: string) => void = () => {};
-  onPos: (id: string, p: Vec3, ry: number, moving: boolean) => void = () => {};
+  onPos: (id: string, p: Vec3, ry: number, moving: boolean, working: boolean) => void =
+    () => {};
   onCar: (id: string, enter: boolean) => void = () => {};
 
   private conns = new Map<string, DataConnection>();
@@ -71,7 +72,7 @@ export class HostRoom {
         this.conns.set(conn.peer, conn);
         conn.send({ t: 'welcome', id: conn.peer, colorIndex } satisfies HostMsg);
       } else if (msg.t === 'pos') {
-        this.onPos(conn.peer, msg.p, msg.ry, msg.moving);
+        this.onPos(conn.peer, msg.p, msg.ry, msg.moving, msg.working ?? false);
       } else if (msg.t === 'car') {
         this.onCar(conn.peer, msg.enter);
       }
@@ -176,9 +177,9 @@ export class ClientRoom {
     });
   }
 
-  sendPos(p: Vec3, ry: number, moving: boolean) {
+  sendPos(p: Vec3, ry: number, moving: boolean, working: boolean) {
     if (this.conn.open) {
-      this.conn.send({ t: 'pos', p, ry, moving } satisfies ClientMsg);
+      this.conn.send({ t: 'pos', p, ry, moving, working } satisfies ClientMsg);
     }
   }
 

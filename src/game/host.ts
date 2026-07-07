@@ -8,12 +8,17 @@ import type {
 } from '../net/network';
 import { BOTTLE_POINTS, CAR_SEATS, CAR_SPAWNS } from '../net/network';
 import { MAX_PLAYERS } from '../net/peer';
+import { FINISH, ROAD_OBSTACLE_DEFS, sampleRoad } from './road';
 
-const BOTTLE_COUNT = 26; // spread across alley + city streets
+const BOTTLE_COUNT = 34; // spread across alley + city + the road
 const COLLECT_RADIUS = 1.25;
 const CAR_COLLECT_RADIUS = 2.4;
 const CAR_ENTER_RADIUS = 3.5;
 const RESPAWN_DELAY = 3;
+// Measured from the obstacle CENTER — obstacles span ~4.2 half-width
+// across the road, so this must reach past their collision pushout.
+const WORK_RADIUS = 6.0;
+const CLEAR_SECONDS_SOLO = 15; // full team of 4 → ~3.75 s
 
 // Weighted: beer common, vodka rare
 const KIND_POOL: BottleKind[] = ['beer', 'beer', 'beer', 'wine', 'wine', 'vodka'];
@@ -32,6 +37,7 @@ function makePlayer(id: string, name: string, colorIndex: number): PlayerState {
     p: spawnLine(colorIndex),
     ry: 0,
     moving: false,
+    working: false,
     score: 0,
     car: null,
   };
@@ -57,6 +63,7 @@ export class HostSim {
       players: [makePlayer(hostId, hostName, 0)],
       bottles: [],
       cars: [],
+      roadObstacles: [],
     };
   }
 
@@ -84,7 +91,7 @@ export class HostSim {
     return this.state.cars.find((c) => c.occupants.includes(playerId));
   }
 
-  setPos(id: string, p: Vec3, ry: number, moving: boolean) {
+  setPos(id: string, p: Vec3, ry: number, moving: boolean, working: boolean) {
     const player = this.state.players.find((pl) => pl.id === id);
     if (!player) return;
     if (player.car !== null) {
@@ -98,11 +105,13 @@ export class HostSim {
         player.ry = ry;
         player.moving = moving;
       }
+      player.working = false;
       return;
     }
     player.p = p;
     player.ry = ry;
     player.moving = moving;
+    player.working = working;
   }
 
   // Hop into the nearest car with a free seat / hop out beside it.
@@ -162,6 +171,18 @@ export class HostSim {
       ry: spawn.ry,
       occupants: [],
     }));
+    // Fresh run: the road out of town is blocked again
+    s.roadObstacles = ROAD_OBSTACLE_DEFS.map((def) => {
+      const sample = sampleRoad(def.t);
+      return {
+        id: def.id,
+        kind: def.kind,
+        p: sample.p,
+        ry: sample.angle,
+        progress: 0,
+        cleared: false,
+      };
+    });
     s.bottles = [];
     this.respawns = [];
     for (let i = 0; i < BOTTLE_COUNT; i++) {
@@ -227,5 +248,30 @@ export class HostSim {
       }
       return false;
     });
+
+    // Team clears road obstacles: on-foot players holding the work
+    // action near one push its progress; more helpers = faster.
+    for (const ob of s.roadObstacles) {
+      if (ob.cleared) continue;
+      let workers = 0;
+      for (const pl of s.players) {
+        if (pl.car !== null || !pl.working) continue;
+        const dx = pl.p[0] - ob.p[0];
+        const dz = pl.p[2] - ob.p[2];
+        if (dx * dx + dz * dz < WORK_RADIUS * WORK_RADIUS) workers++;
+      }
+      if (workers > 0) {
+        ob.progress = Math.min(1, ob.progress + (workers * dt) / CLEAR_SECONDS_SOLO);
+        if (ob.progress >= 1) ob.cleared = true;
+      }
+    }
+
+    // Victory: any occupied vehicle reaches the ROUTE 65 junction
+    for (const car of s.cars) {
+      if (car.occupants.length > 0 && car.p[2] >= FINISH.p[2] - 3) {
+        s.phase = 'won';
+        break;
+      }
+    }
   }
 }

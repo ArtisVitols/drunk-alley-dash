@@ -10,6 +10,7 @@ export class HUD {
   onCreate: (name: string, mode: SceneMode) => void = () => {};
   onJoin: (code: string, name: string) => void = () => {};
   onStart: () => void = () => {};
+  onAgain: () => void = () => {};
 
   private menu = $('menu');
   private lobby = $('lobby');
@@ -20,6 +21,9 @@ export class HUD {
   private modeSelect = $<HTMLSelectElement>('mode-select');
   private joinBtn = $<HTMLButtonElement>('join-btn');
   private startBtn = $<HTMLButtonElement>('start-btn');
+  private againBtn = $<HTMLButtonElement>('again-btn');
+  private won = $('won');
+  private isHost = false;
 
   constructor() {
     this.createBtn.addEventListener('click', () =>
@@ -32,6 +36,7 @@ export class HUD {
       if (e.key === 'Enter') this.joinBtn.click();
     });
     this.startBtn.addEventListener('click', () => this.onStart());
+    this.againBtn.addEventListener('click', () => this.onAgain());
   }
 
   private playerName(): string {
@@ -49,6 +54,7 @@ export class HUD {
   }
 
   showLobby(code: string, isHost: boolean) {
+    this.isHost = isHost;
     this.menu.classList.add('hidden');
     this.lobby.classList.remove('hidden');
     $('room-code').textContent = code;
@@ -76,7 +82,36 @@ export class HUD {
 
   showPlaying() {
     this.lobby.classList.add('hidden');
+    this.won.classList.add('hidden');
     this.hud.classList.remove('hidden');
+  }
+
+  showWon(players: PlayerState[]) {
+    this.won.classList.remove('hidden');
+    const list = $('won-scores');
+    list.innerHTML = '';
+    const medals = ['🥇', '🥈', '🥉', '🍺'];
+    [...players]
+      .sort((a, b) => b.score - a.score)
+      .forEach((p, i) => {
+        const li = document.createElement('li');
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = cssColor(p.colorIndex);
+        const pts = document.createElement('span');
+        pts.className = 'pts';
+        pts.textContent = String(p.score);
+        li.append(document.createTextNode(medals[i] + ' '), dot, document.createTextNode(p.name), pts);
+        list.append(li);
+      });
+    this.againBtn.classList.toggle('hidden', !this.isHost);
+    $('won-note').textContent = this.isHost ? '' : 'Waiting for the host…';
+  }
+
+  setRouteLabel(text: string | null) {
+    const label = $('route-label');
+    label.classList.toggle('hidden', text === null);
+    if (text !== null) label.textContent = text;
   }
 
   setScores(players: PlayerState[], myId: string) {

@@ -240,6 +240,41 @@ button:disabled {
   color: #ffd9ad;
 }
 
+#route-label {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+  color: #e8f0d8;
+  background: rgba(20, 60, 30, 0.75);
+  border: 1px solid rgba(240, 240, 230, 0.5);
+  border-radius: 8px;
+  padding: 6px 14px;
+}
+
+#won-scores {
+  list-style: none;
+  margin: 10px 0 18px;
+  text-align: left;
+}
+
+#won-scores li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 4px;
+  font-size: 16px;
+}
+
+#won-scores .pts {
+  margin-left: auto;
+  font-weight: 700;
+  font-family: ui-monospace, monospace;
+}
+
 #help {
   position: absolute;
   bottom: 12px;
