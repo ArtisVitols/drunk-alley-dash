@@ -114,6 +114,19 @@ export class HUD {
     if (text !== null) label.textContent = text;
   }
 
+  // Progress panel while the team works on a road obstacle
+  setClearPanel(progress: number | null, workers = 0) {
+    const panel = $('clear-panel');
+    panel.classList.toggle('hidden', progress === null);
+    if (progress === null) return;
+    $('clear-title').textContent = `🛠 Clearing the road… ${Math.round(progress * 100)}%`;
+    $<HTMLDivElement>('clear-fill').style.width = `${Math.round(progress * 100)}%`;
+    $('clear-workers').textContent =
+      workers > 1
+        ? `👷 ${workers} clearing — kartu greičiau!`
+        : 'More friends here = faster clearing';
+  }
+
   setScores(players: PlayerState[], myId: string) {
     const box = $('scores');
     box.innerHTML = '';

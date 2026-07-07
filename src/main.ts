@@ -29,7 +29,14 @@ import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
 import { ClientRoom, HostRoom } from './net/peer';
-import type { BottleKind, Phase, SceneMode, Vec3, WorldState } from './net/network';
+import type {
+  BottleKind,
+  Phase,
+  RoadObstacleState,
+  SceneMode,
+  Vec3,
+  WorldState,
+} from './net/network';
 
 // --- Renderer / scene ---------------------------------------------------
 
@@ -201,22 +208,44 @@ function requestCar(enter: boolean) {
   else clientRoom?.sendCar(enter);
 }
 
-// Uncleared road obstacle within working reach (on foot only)
-function nearObstacle(): boolean {
-  if (!latestState || myCarId !== null) return false;
+// Nearest uncleared road obstacle within working reach (on foot only);
+// radius matches the host's WORK_RADIUS (obstacles are ~4.2 half-long).
+const WORK_RADIUS = 6.0;
+
+function nearObstacle(): RoadObstacleState | null {
+  if (!latestState || myCarId !== null) return null;
+  let best: RoadObstacleState | null = null;
+  let bestD = WORK_RADIUS * WORK_RADIUS;
   for (const ob of latestState.roadObstacles) {
     if (ob.cleared) continue;
     const dx = local.pos.x - ob.p[0];
     const dz = local.pos.z - ob.p[2];
-    // Matches the host's WORK_RADIUS (obstacles are ~4.2 half-long)
-    if (dx * dx + dz * dz < 6.0 * 6.0) return true;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD) {
+      bestD = d2;
+      best = ob;
+    }
   }
-  return false;
+  return best;
 }
 
-// Clearing obstacles is automatic by proximity (hold gestures proved
-// unreliable on phones) — the 'work' mode is just a status chip.
-type BtnMode = 'exit' | 'work' | 'enter' | 'drive' | null;
+// How many on-foot players are working this obstacle (mirrors host math)
+function workerCount(ob: RoadObstacleState): number {
+  if (!latestState) return 0;
+  let count = 0;
+  for (const pl of latestState.players) {
+    if (pl.car !== null) continue;
+    const dx = pl.p[0] - ob.p[0];
+    const dz = pl.p[2] - ob.p[2];
+    if (dx * dx + dz * dz < WORK_RADIUS * WORK_RADIUS) count++;
+  }
+  return count;
+}
+
+// The button is cars-only; obstacle work is automatic by proximity
+// (hold gestures proved unreliable on phones) and reports through the
+// HUD progress panel instead.
+type BtnMode = 'exit' | 'enter' | 'drive' | null;
 let btnMode: BtnMode = null;
 
 function updateCarButton() {
@@ -226,10 +255,8 @@ function updateCarButton() {
     else {
       const near = nearCarWithSeat();
       if (near) mode = near.occupied ? 'enter' : 'drive';
-      else if (nearObstacle()) mode = 'work';
     }
   }
-  working = mode === 'work';
   if (mode !== btnMode) {
     btnMode = mode;
     if (mode === null) {
@@ -237,13 +264,18 @@ function updateCarButton() {
     } else {
       carBtn.textContent =
         mode === 'exit' ? '🚪 Get out'
-        : mode === 'work' ? '🛠 Clearing…'
         : mode === 'enter' ? '🚗 Hop in'
         : '🚗 Drive';
-      carBtn.classList.toggle('status', mode === 'work');
       carBtn.classList.remove('hidden');
     }
   }
+}
+
+// Obstacle work state + the progress panel, refreshed every frame
+function updateClearPanel() {
+  const ob = latestState?.phase === 'play' ? nearObstacle() : null;
+  working = ob !== null;
+  hud.setClearPanel(ob ? ob.progress : null, ob ? workerCount(ob) : 0);
 }
 
 // Raw pointer events (no click) so the browser's long-press
@@ -584,6 +616,7 @@ renderer.setAnimationLoop(() => {
       host.sim.tick(dt);
     }
     updateCarButton();
+    updateClearPanel();
     updateCamera(dt, t);
     // Shadows follow whoever we are; the world is too long for one map
     const pose = currentPose();
