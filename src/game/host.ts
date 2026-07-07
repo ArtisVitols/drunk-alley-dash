@@ -6,10 +6,9 @@ import type {
   Vec3,
   WorldState,
 } from '../net/network';
-import { BOTTLE_POINTS, CAR_SPAWNS } from '../net/network';
+import { BOTTLE_POINTS, CAR_SEATS, CAR_SPAWNS } from '../net/network';
 import { MAX_PLAYERS } from '../net/peer';
 
-export const ROUND_SECONDS = 120;
 const BOTTLE_COUNT = 26; // spread across alley + city streets
 const COLLECT_RADIUS = 1.25;
 const CAR_COLLECT_RADIUS = 2.4;
@@ -39,6 +38,7 @@ function makePlayer(id: string, name: string, colorIndex: number): PlayerState {
 }
 
 // Authoritative game simulation — runs only in the host's browser.
+// No round timer: the session runs until the host closes the room.
 export class HostSim {
   readonly state: WorldState;
   private clock = 0;
@@ -54,7 +54,6 @@ export class HostSim {
     this.state = {
       phase: 'lobby',
       mode,
-      timeLeft: ROUND_SECONDS,
       players: [makePlayer(hostId, hostName, 0)],
       bottles: [],
       cars: [],
@@ -73,51 +72,76 @@ export class HostSim {
   removePlayer(id: string) {
     const i = this.state.players.findIndex((p) => p.id === id);
     if (i >= 0) {
-      const car = this.state.cars.find((c) => c.occupant === id);
-      if (car) car.occupant = null;
+      for (const car of this.state.cars) {
+        const seat = car.occupants.indexOf(id);
+        if (seat >= 0) car.occupants.splice(seat, 1);
+      }
       this.state.players.splice(i, 1);
     }
+  }
+
+  private carOf(playerId: string) {
+    return this.state.cars.find((c) => c.occupants.includes(playerId));
   }
 
   setPos(id: string, p: Vec3, ry: number, moving: boolean) {
     const player = this.state.players.find((pl) => pl.id === id);
     if (!player) return;
+    if (player.car !== null) {
+      const car = this.carOf(id);
+      // Only the driver steers the car; passenger pos reports are ignored
+      // (their position is pinned to the car in tick()).
+      if (car && car.occupants[0] === id) {
+        car.p = p;
+        car.ry = ry;
+        player.p = p;
+        player.ry = ry;
+        player.moving = moving;
+      }
+      return;
+    }
     player.p = p;
     player.ry = ry;
     player.moving = moving;
-    if (player.car !== null) {
-      const car = this.state.cars.find((c) => c.id === player.car);
-      if (car) {
-        car.p = p;
-        car.ry = ry;
-      }
-    }
   }
 
-  // Hop in the nearest free car / hop out beside the current one.
+  // Hop into the nearest car with a free seat / hop out beside it.
+  // First one in is the driver; when the driver leaves, the next
+  // occupant inherits the wheel.
   requestCar(id: string, enter: boolean) {
     const player = this.state.players.find((pl) => pl.id === id);
     if (!player || this.state.phase !== 'play') return;
     if (enter && player.car === null) {
+      let best: (typeof this.state.cars)[number] | null = null;
+      let bestD = CAR_ENTER_RADIUS * CAR_ENTER_RADIUS;
       for (const car of this.state.cars) {
-        if (car.occupant !== null) continue;
+        if (car.occupants.length >= CAR_SEATS) continue;
         const dx = player.p[0] - car.p[0];
         const dz = player.p[2] - car.p[2];
-        if (dx * dx + dz * dz < CAR_ENTER_RADIUS * CAR_ENTER_RADIUS) {
-          car.occupant = id;
-          player.car = car.id;
-          player.p = [...car.p];
-          player.ry = car.ry;
-          return;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < bestD) {
+          bestD = d2;
+          best = car;
         }
       }
+      if (best) {
+        best.occupants.push(id);
+        player.car = best.id;
+        player.p = [...best.p];
+        player.ry = best.ry;
+      }
     } else if (!enter && player.car !== null) {
-      const car = this.state.cars.find((c) => c.id === player.car);
+      const car = this.carOf(id);
       player.car = null;
       if (car) {
-        car.occupant = null;
-        // Step out on the car's left side
-        player.p = [car.p[0] + Math.cos(car.ry) * 2, 0, car.p[2] - Math.sin(car.ry) * 2];
+        const seat = car.occupants.indexOf(id);
+        car.occupants.splice(seat, 1);
+        // Step out on the car's left side, staggered per seat
+        player.p = [
+          car.p[0] + Math.cos(car.ry) * (2 + seat * 0.7),
+          0,
+          car.p[2] - Math.sin(car.ry) * (2 + seat * 0.7),
+        ];
       }
     }
   }
@@ -130,19 +154,19 @@ export class HostSim {
       p.ry = 0;
       p.car = null;
     });
-    // One parked car per player at the alley exit
-    s.cars = s.players.map((_, i) => ({
+    // The full fleet, always: sedan, van, RV, truck
+    s.cars = CAR_SPAWNS.map((spawn, i) => ({
       id: i + 1,
-      p: [...CAR_SPAWNS[i].p] as Vec3,
-      ry: CAR_SPAWNS[i].ry,
-      occupant: null,
+      kind: spawn.kind,
+      p: [...spawn.p] as Vec3,
+      ry: spawn.ry,
+      occupants: [],
     }));
     s.bottles = [];
     this.respawns = [];
     for (let i = 0; i < BOTTLE_COUNT; i++) {
       s.bottles.push(this.makeBottle());
     }
-    s.timeLeft = ROUND_SECONDS;
     s.phase = 'play';
   }
 
@@ -160,15 +184,27 @@ export class HostSim {
     const s = this.state;
     if (s.phase !== 'play') return;
 
-    s.timeLeft = Math.max(0, s.timeLeft - dt);
-    if (s.timeLeft === 0) {
-      s.phase = 'end';
-      return;
+    // Pin every occupant to their car (passengers ride along)
+    for (const car of s.cars) {
+      for (const pid of car.occupants) {
+        const player = s.players.find((pl) => pl.id === pid);
+        if (player) {
+          player.p = [...car.p];
+          player.ry = car.ry;
+        }
+      }
     }
 
+    // Collection: on-foot players and drivers. Passengers are along
+    // for the ride — they share the car's position, so letting them
+    // collect would just duplicate the driver's pickups.
     for (const bottle of s.bottles) {
       if (!bottle.active) continue;
       for (const player of s.players) {
+        if (player.car !== null) {
+          const car = this.carOf(player.id);
+          if (!car || car.occupants[0] !== player.id) continue;
+        }
         const dx = player.p[0] - bottle.p[0];
         const dz = player.p[2] - bottle.p[2];
         const radius = player.car !== null ? CAR_COLLECT_RADIUS : COLLECT_RADIUS;

@@ -47,14 +47,18 @@ a00b27b8; recreate from this outline if gone:
    floating joystick (`#stick` unhides while dragging); drag up = walk,
    sideways = turn. A full phone-joins-desktop script outline lived at
    `scratchpad/mobile.mjs` in session a00b27b8.
-5. Scoring: read `window.__dad` (read-only debug handle: `pos`, `ry`, `car`,
-   `speed`, `bottles`) and steer W + A/D toward the nearest bottle until
+5. Scoring: read `window.__dad` (debug handle: `pos`, `ry`, `car`, `driver`,
+   `speed`, `bottles`, `cars`, plus `teleport(x, z)` that only works with
+   `?dev=1` in the URL) and steer W + A/D toward the nearest bottle until
    `.srow.me .pts` > 0; check the other browser's scoreboard agrees. Blind
-   wandering no longer works — the map is alley + city and too big.
-6. Cars: walk to a parked car (CAR_SPAWNS in `src/net/network.ts`, first at
-   (-14, 35) past the alley exit); `#car-btn` unhides within 3.2 m → press
-   E (or click it) → `__dad.car` non-null → drive with W → E exits. One car
-   per player spawns at round start.
+   wandering no longer works — the map is alley + city and too big. There is
+   no round timer; scores only ever climb.
+6. Cars: always 4 (sedan/van/rv/truck — CAR_SPAWNS in `src/net/network.ts`,
+   sedan at (-13.5, 35) past the alley exit); `#car-btn` unhides within
+   3.2 m → press E (or click it) → `__dad.car` non-null. Up to 4 per car:
+   occupants[0] drives (`__dad.driver`), the rest are window passengers
+   pinned to the car; when the driver exits the next occupant is promoted.
+   Use `?dev=1` + `__dad.teleport` to skip the long walk to the cars.
 6. Disconnect probe: close browser B; A's scoreboard must drop to 1 row
    within ~5 s (heartbeat timeout in `src/net/peer.ts`).
 

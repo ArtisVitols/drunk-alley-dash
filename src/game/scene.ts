@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SceneMode, Vec3 } from '../net/network';
 import { asphaltTextures, brickTexture, facadeTexture, neonTexture } from './textures';
 
@@ -224,23 +225,24 @@ export function buildScene(
   backWall.receiveShadow = true;
   root.add(backWall);
 
-  // Dashed center lines on the streets
+  // Dashed center lines on the streets — merged into one draw call
+  // (SwiftShader/low-end GPUs choke on per-dash meshes)
   const dashMat = new THREE.MeshStandardMaterial({ color: 0xc9c9bd, roughness: 0.9 });
-  const dashAlongX = new THREE.PlaneGeometry(1.4, 0.22);
-  const dashAlongZ = new THREE.PlaneGeometry(0.22, 1.4);
-  const addDash = (geo: THREE.PlaneGeometry, x: number, z: number) => {
-    const dash = new THREE.Mesh(geo, dashMat);
-    dash.rotation.x = -Math.PI / 2;
-    dash.position.set(x, 0.015, z);
-    root.add(dash);
+  const dashGeos: THREE.BufferGeometry[] = [];
+  const pushDash = (alongX: boolean, x: number, z: number) => {
+    const g = new THREE.PlaneGeometry(alongX ? 1.4 : 0.22, alongX ? 0.22 : 1.4);
+    g.rotateX(-Math.PI / 2);
+    g.translate(x, 0.015, z);
+    dashGeos.push(g);
   };
   for (const z of [35, 75, 115]) {
-    for (let x = -42; x <= 42; x += 5) addDash(dashAlongX, x, z);
+    for (let x = -42; x <= 42; x += 5) pushDash(true, x, z);
   }
   for (const x of [-39.9, 0, 39.9]) {
     const z0 = x === 0 ? 41 : 33;
-    for (let z = z0; z <= 113; z += 5) addDash(dashAlongZ, x, z);
+    for (let z = z0; z <= 113; z += 5) pushDash(false, x, z);
   }
+  root.add(new THREE.Mesh(mergeGeometries(dashGeos), dashMat));
 
   // City street lamps (real point lights only at a few corners)
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2e33, roughness: 0.6, metalness: 0.6 });
@@ -273,29 +275,52 @@ export function buildScene(
     }
   }
 
-  // Windows — warm lamps behind some at night; dead sky-glass by day
-  const windowGeo = new THREE.BoxGeometry(0.12, 1.2, 0.9);
-  const frameGeo = new THREE.BoxGeometry(0.14, 1.4, 1.1);
+  // Windows — warm lamps behind some at night; dead sky-glass by day.
+  // Frames and same-look panes merge into few draw calls.
   const frameMat = new THREE.MeshStandardMaterial({ color: 0x1b1712, roughness: 0.9 });
+  const frameGeos: THREE.BufferGeometry[] = [];
+  const litGeos: THREE.BufferGeometry[] = [];
+  const darkGeos: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 16; i++) {
     const side = i % 2 === 0 ? -1 : 1;
     const lit = night && Math.random() < 0.35;
-    const mat = new THREE.MeshStandardMaterial({
-      color: night ? 0x0d0d10 : 0x36414f,
-      emissive: lit ? 0xcf9a4a : night ? 0x11131c : 0x000000,
-      emissiveIntensity: lit ? 0.9 : 0.25,
-      roughness: night ? 0.3 : 0.12,
-      metalness: night ? 0.4 : 0.7,
-    });
     const x = side * (ALLEY_HALF_WIDTH - 0.02);
     const y = 3.6 + (i % 3) * 2.6;
     const z = -26 + i * 3.4;
-    const frame = new THREE.Mesh(frameGeo, frameMat);
-    frame.position.set(x, y, z);
-    const pane = new THREE.Mesh(windowGeo, mat);
-    pane.position.set(side * ALLEY_HALF_WIDTH, y, z);
-    root.add(frame, pane);
+    const frame = new THREE.BoxGeometry(0.14, 1.4, 1.1);
+    frame.translate(x, y, z);
+    frameGeos.push(frame);
+    const pane = new THREE.BoxGeometry(0.12, 1.2, 0.9);
+    pane.translate(side * ALLEY_HALF_WIDTH, y, z);
+    (lit ? litGeos : darkGeos).push(pane);
   }
+  root.add(new THREE.Mesh(mergeGeometries(frameGeos), frameMat));
+  if (litGeos.length) {
+    root.add(
+      new THREE.Mesh(
+        mergeGeometries(litGeos),
+        new THREE.MeshStandardMaterial({
+          color: 0x0d0d10,
+          emissive: 0xcf9a4a,
+          emissiveIntensity: 0.9,
+          roughness: 0.3,
+          metalness: 0.4,
+        }),
+      ),
+    );
+  }
+  root.add(
+    new THREE.Mesh(
+      mergeGeometries(darkGeos),
+      new THREE.MeshStandardMaterial({
+        color: night ? 0x0d0d10 : 0x36414f,
+        emissive: night ? 0x11131c : 0x000000,
+        emissiveIntensity: 0.25,
+        roughness: night ? 0.3 : 0.12,
+        metalness: night ? 0.4 : 0.7,
+      }),
+    ),
+  );
 
   const flickerItems: {
     obj: THREE.PointLight | THREE.MeshBasicMaterial;
@@ -562,22 +587,24 @@ export function buildScene(
     root.add(bag);
   }
 
-  // Scattered litter
-  const litterGeo = new THREE.PlaneGeometry(0.28, 0.36);
+  // Scattered litter — also merged into a single mesh
+  const litterGeos: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 22; i++) {
-    const shade = 130 + Math.floor(Math.random() * 80);
-    const litter = new THREE.Mesh(
-      litterGeo,
-      new THREE.MeshStandardMaterial({
-        color: (shade << 16) | (shade << 8) | (shade - 20),
-        roughness: 0.95,
-        side: THREE.DoubleSide,
-      }),
+    const g = new THREE.PlaneGeometry(0.28, 0.36);
+    g.applyMatrix4(
+      new THREE.Matrix4().makeRotationFromEuler(
+        new THREE.Euler(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI),
+      ),
     );
-    litter.rotation.set(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI);
-    litter.position.set(-7 + Math.random() * 14, 0.02, -28 + Math.random() * 56);
-    root.add(litter);
+    g.translate(-7 + Math.random() * 14, 0.02, -28 + Math.random() * 56);
+    litterGeos.push(g);
   }
+  root.add(
+    new THREE.Mesh(
+      mergeGeometries(litterGeos),
+      new THREE.MeshStandardMaterial({ color: 0xa8a390, roughness: 0.95, side: THREE.DoubleSide }),
+    ),
+  );
 
   // Wall lamps with cone shades — flickering at night, off by day
   const lampShadeMat = new THREE.MeshStandardMaterial({ color: 0x22252c, roughness: 0.5, metalness: 0.7 });

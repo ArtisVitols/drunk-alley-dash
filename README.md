@@ -1,8 +1,9 @@
 # 🍺 Drunk Alley Dash
 
 A 3D multiplayer browser game for up to 4 players. Drunk guys stagger around a
-dirty Vilnius back alley and compete to grab the most booze before the 2-minute
-timer runs out. Alus 🍺 is worth 1 point, vynas 🍷 is 2, degtinė 🥃 is 3.
+dirty Vilnius back alley and compete to grab the most booze — no timer, the
+session just keeps going and the counters keep climbing. Alus 🍺 is worth
+1 point, vynas 🍷 is 2, degtinė 🥃 is 3.
 
 When creating a room the host picks the time of day — a bright Baltic
 afternoon (default) or the neon-lit night — and every joiner gets the same
@@ -23,12 +24,16 @@ On **phones/tablets**, drag anywhere on the screen — a floating joystick
 appears under your thumb (up/down walks, left/right turns).
 Walking drunk means your heading drifts on its own — deal with it.
 
-**Cars:** the alley opens onto a small city — a few blocks of streets. One
-car per player is parked at the alley exit. Walk up to a free one and press
-**E** (or tap the **🚗** button) to hop in, drive the streets — the car pulls
-side to side, you're drunk — and press **E** / tap **🚪** to get out. Driving
-is faster and collects bottles in a wider radius, but most bottles hide in
-the alley on foot.
+**Cars:** the alley opens onto a small city — a few blocks of streets. Four
+rides are always parked at the alley exit: a nimble **sedan**, a boxy **van**,
+a lumbering **RV**, and a **pickup truck** with an open bed — each drives
+differently. Walk up and press **E** (or tap the **🚗** button) to hop in;
+press **E** / tap **🚪** to get out. Up to 4 people fit in one car: the first
+in drives (invisible — busy steering), everyone else hangs out of the windows
+waving their bottles (truck passengers party standing in the bed). If the
+driver bails, the next passenger inherits the wheel. Only drivers and walkers
+collect bottles — driving grabs them in a wider radius, but most bottles hide
+in the alley on foot.
 
 ## Develop
 

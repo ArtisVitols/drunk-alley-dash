@@ -8,7 +8,7 @@ export const BOTTLE_POINTS: Record<BottleKind, number> = {
   vodka: 3,
 };
 
-export type Phase = 'lobby' | 'play' | 'end';
+export type Phase = 'lobby' | 'play';
 
 export type SceneMode = 'day' | 'night';
 
@@ -23,20 +23,26 @@ export interface PlayerState {
   car: number | null;
 }
 
+export type CarKind = 'sedan' | 'van' | 'rv' | 'truck';
+
+export const CAR_SEATS = 4; // 1 driver + 3 passengers
+
 export interface CarState {
   id: number;
+  kind: CarKind;
   p: Vec3;
   ry: number;
-  occupant: string | null;
+  // occupants[0] is the driver; the rest are passengers in seat order
+  occupants: string[];
 }
 
-// Parking spots on the street just outside the alley exit; one car
-// per player spawns here at round start.
-export const CAR_SPAWNS: { p: Vec3; ry: number }[] = [
-  { p: [-14, 0, 35], ry: Math.PI / 2 },
-  { p: [-20, 0, 35], ry: Math.PI / 2 },
-  { p: [14, 0, 35], ry: -Math.PI / 2 },
-  { p: [20, 0, 35], ry: -Math.PI / 2 },
+// The permanent fleet parked on the street outside the alley exit —
+// always all four, any player can take any of them.
+export const CAR_SPAWNS: { kind: CarKind; p: Vec3; ry: number }[] = [
+  { kind: 'sedan', p: [-13.5, 0, 35], ry: Math.PI / 2 },
+  { kind: 'van', p: [-21, 0, 35], ry: Math.PI / 2 },
+  { kind: 'rv', p: [14, 0, 35], ry: -Math.PI / 2 },
+  { kind: 'truck', p: [22, 0, 35], ry: -Math.PI / 2 },
 ];
 
 export interface BottleState {
@@ -49,7 +55,6 @@ export interface BottleState {
 export interface WorldState {
   phase: Phase;
   mode: SceneMode;
-  timeLeft: number;
   players: PlayerState[];
   bottles: BottleState[];
   cars: CarState[];

@@ -212,18 +212,6 @@ button:disabled {
   pointer-events: none;
 }
 
-#timer {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 30px;
-  font-weight: 800;
-  font-family: ui-monospace, monospace;
-  color: #ffb066;
-  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-}
-
 #scores {
   position: absolute;
   top: 14px;
@@ -265,26 +253,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-#end-scores {
-  list-style: none;
-  margin: 10px 0 18px;
-  text-align: left;
-}
-
-#end-scores li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 4px;
-  font-size: 16px;
-}
-
-#end-scores .pts {
-  margin-left: auto;
-  font-weight: 700;
-  font-family: ui-monospace, monospace;
-}
-
 #car-btn {
   pointer-events: auto;
   position: absolute;
@@ -305,11 +273,6 @@ button:disabled {
 
   .panel h1 {
     font-size: 22px;
-  }
-
-  #timer {
-    font-size: 22px;
-    top: 10px;
   }
 
   #scores {

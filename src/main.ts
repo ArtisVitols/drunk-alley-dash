@@ -14,7 +14,7 @@ import {
   createPlayerMesh,
 } from './game/player';
 import { BOTTLE_GLOW, createBottleMesh } from './game/pickups';
-import { CarController, RemoteCar, applyCarWobble } from './game/car';
+import { CarController, RemoteCar, applyCarWobble, syncCarPassengers } from './game/car';
 import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
@@ -166,15 +166,22 @@ if (window.matchMedia('(pointer: coarse)').matches) {
 
 const carBtn = document.getElementById('car-btn') as HTMLButtonElement;
 
-function nearFreeCar(): boolean {
-  if (!latestState || drivingCar !== null) return false;
+// Nearest car with a free seat (4 max per car)
+function nearCarWithSeat(): { occupied: boolean } | null {
+  if (!latestState || myCarId !== null) return null;
+  let best: { occupied: boolean } | null = null;
+  let bestD = 3.2 * 3.2;
   for (const c of latestState.cars) {
-    if (c.occupant !== null) continue;
+    if (c.occupants.length >= 4) continue;
     const dx = local.pos.x - c.p[0];
     const dz = local.pos.z - c.p[2];
-    if (dx * dx + dz * dz < 3.2 * 3.2) return true;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD) {
+      bestD = d2;
+      best = { occupied: c.occupants.length > 0 };
+    }
   }
-  return false;
+  return best;
 }
 
 function requestCar(enter: boolean) {
@@ -183,22 +190,23 @@ function requestCar(enter: boolean) {
 }
 
 function updateCarButton() {
-  if (latestState?.phase === 'play' && drivingCar !== null) {
+  const near = latestState?.phase === 'play' ? nearCarWithSeat() : null;
+  if (latestState?.phase === 'play' && myCarId !== null) {
     carBtn.textContent = '🚪 Get out';
     carBtn.classList.remove('hidden');
-  } else if (latestState?.phase === 'play' && nearFreeCar()) {
-    carBtn.textContent = '🚗 Hop in';
+  } else if (near) {
+    carBtn.textContent = near.occupied ? '🚗 Hop in' : '🚗 Drive';
     carBtn.classList.remove('hidden');
   } else {
     carBtn.classList.add('hidden');
   }
 }
 
-carBtn.addEventListener('click', () => requestCar(drivingCar === null));
+carBtn.addEventListener('click', () => requestCar(myCarId === null));
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
-    if (drivingCar !== null) requestCar(false);
-    else if (nearFreeCar()) requestCar(true);
+    if (myCarId !== null) requestCar(false);
+    else if (nearCarWithSeat()) requestCar(true);
   }
 });
 
@@ -215,7 +223,8 @@ let inRoom = false;
 
 const local = new LocalController();
 const carCtrl = new CarController();
-let drivingCar: number | null = null;
+let myCarId: number | null = null;
+let amDriver = false;
 let myMesh: THREE.Group | null = null;
 
 const remotes = new Map<string, RemoteAvatar>();
@@ -242,6 +251,7 @@ async function createRoom(name: string, mode: SceneMode) {
     hud.updateLobby(sim.state.players);
   };
   room.onPos = (id, p, ry, moving) => sim.setPos(id, p, ry, moving);
+  room.onCar = (id, enter) => sim.requestCar(id, enter);
   host = { room, sim };
   myId = room.myId;
   latestState = sim.state;
@@ -272,13 +282,14 @@ async function joinRoom(code: string, name: string) {
 }
 
 function currentPose(): { p: Vec3; ry: number; moving: boolean } {
-  if (drivingCar !== null) {
+  if (myCarId !== null && amDriver) {
     return {
       p: [carCtrl.pos.x, 0, carCtrl.pos.z],
       ry: carCtrl.ry,
       moving: Math.abs(carCtrl.speed) > 0.3,
     };
   }
+  // Passengers' reports are ignored by the host (pinned to the car)
   return { p: [local.pos.x, 0, local.pos.z], ry: local.ry, moving: local.moving };
 }
 
@@ -307,7 +318,6 @@ hud.onJoin = async (code, name) => {
 };
 
 hud.onStart = () => host?.sim.startRound();
-hud.onAgain = () => host?.sim.startRound();
 
 // --- World state → scene -----------------------------------------------------
 
@@ -318,19 +328,23 @@ function applyState(state: WorldState, t: number) {
     lastPhase = state.phase;
   }
 
-  // My car enter/exit transitions (host decides; we react to state)
+  // My car enter/exit/seat transitions (host decides; we react).
+  // Becoming occupants[0] — even mid-ride, when the driver bails —
+  // hands us the wheel.
   const me = state.players.find((p) => p.id === myId);
   const myCar = me?.car ?? null;
-  if (myCar !== drivingCar) {
-    if (myCar !== null) {
-      const car = state.cars.find((c) => c.id === myCar);
-      if (car) carCtrl.reset(car.p, car.ry);
-    } else if (me) {
+  const myCarState = myCar !== null ? state.cars.find((c) => c.id === myCar) : undefined;
+  const nowDriver = !!myCarState && myCarState.occupants[0] === myId;
+  if (myCar !== myCarId || nowDriver !== amDriver) {
+    if (nowDriver && myCarState) {
+      carCtrl.reset(myCarState.p, myCarState.ry, myCarState.kind);
+    } else if (myCar === null && me) {
       // Host placed us beside the car on exit
       local.pos.set(me.p[0], 0, me.p[2]);
       local.ry = me.ry;
     }
-    drivingCar = myCar;
+    myCarId = myCar;
+    amDriver = nowDriver;
   }
 
   const seenPlayers = new Set<string>();
@@ -382,13 +396,15 @@ function applyState(state: WorldState, t: number) {
     seenCars.add(c.id);
     let car = cars.get(c.id);
     if (!car) {
-      car = new RemoteCar(c.id - 1);
+      car = new RemoteCar(c.kind);
       car.snap(c.p, c.ry);
       scene.add(car.group);
       cars.set(c.id, car);
     }
-    // My own car is posed from the local controller in the main loop
-    if (c.occupant !== myId) car.setTarget(c.p, c.ry);
+    // The car I drive is posed from the local controller in the main loop
+    if (!(c.id === myCarId && amDriver)) car.setTarget(c.p, c.ry);
+    // Window/bed passengers (driver stays invisible inside)
+    syncCarPassengers(car.group, c.occupants, state.players);
   }
   for (const [id, car] of cars) {
     if (!seenCars.has(id)) {
@@ -399,8 +415,7 @@ function applyState(state: WorldState, t: number) {
 
   if (state.phase === 'lobby') {
     hud.updateLobby(state.players);
-  } else if (state.phase === 'play') {
-    hud.setTimer(state.timeLeft);
+  } else {
     hud.setScores(state.players, myId);
   }
 }
@@ -413,8 +428,6 @@ function onPhaseChange(state: WorldState) {
       local.ry = me.ry;
     }
     hud.showPlaying();
-  } else if (state.phase === 'end') {
-    hud.showEnd(state.players, myId);
   }
 }
 
@@ -423,12 +436,14 @@ function onPhaseChange(state: WorldState) {
 const camTarget = new THREE.Vector3();
 
 function updateCamera(dt: number, t: number) {
-  const driving = drivingCar !== null;
-  const px = driving ? carCtrl.pos.x : local.pos.x;
-  const pz = driving ? carCtrl.pos.z : local.pos.z;
-  const ry = driving ? carCtrl.ry : local.ry;
-  const dist = driving ? 10 : 6.2;
-  camTarget.set(px - Math.sin(ry) * dist, driving ? 6.4 : 4.4, pz - Math.cos(ry) * dist);
+  const inCar = myCarId !== null;
+  // Driver follows the local sim; a passenger follows the car mesh
+  const carMesh = inCar && !amDriver ? cars.get(myCarId!)?.group : null;
+  const px = inCar ? (carMesh ? carMesh.position.x : carCtrl.pos.x) : local.pos.x;
+  const pz = inCar ? (carMesh ? carMesh.position.z : carCtrl.pos.z) : local.pos.z;
+  const ry = inCar ? (carMesh ? carMesh.rotation.y : carCtrl.ry) : local.ry;
+  const dist = inCar ? 10 : 6.2;
+  camTarget.set(px - Math.sin(ry) * dist, inCar ? 6.4 : 4.4, pz - Math.cos(ry) * dist);
   // Keep the chase camera out of buildings (same pushout as bodies)
   collideCircle(camTarget, 1.2, world);
   camera.position.lerp(camTarget, 1 - Math.pow(0.0005, dt));
@@ -459,15 +474,18 @@ renderer.setAnimationLoop(() => {
       fwd = joy.fwd;
       turn = joy.turn;
     }
-    if (drivingCar !== null) {
+    if (myCarId !== null && amDriver) {
       carCtrl.update(dt, fwd, turn, world);
       myMesh.visible = false;
-      const mine = cars.get(drivingCar);
+      const mine = cars.get(myCarId);
       if (mine) {
         mine.group.position.copy(carCtrl.pos);
         mine.group.rotation.y = carCtrl.ry;
         applyCarWobble(mine.group, t, dt, carCtrl.speed);
       }
+    } else if (myCarId !== null) {
+      // Passenger: the car is driven elsewhere; we just hang out the window
+      myMesh.visible = false;
     } else {
       local.update(dt, fwd, turn, world);
       myMesh.visible = true;
@@ -493,7 +511,7 @@ renderer.setAnimationLoop(() => {
     avatar.update(dt, t);
   }
   for (const [id, car] of cars) {
-    if (id !== drivingCar) car.update(dt, t);
+    if (!(id === myCarId && amDriver)) car.update(dt, t);
   }
 
   if (lofi) renderer.render(scene, camera);
@@ -503,15 +521,21 @@ renderer.setAnimationLoop(() => {
 // Read-only debug handle for end-to-end tests
 (window as unknown as Record<string, unknown>).__dad = {
   get pos(): [number, number] {
-    return drivingCar !== null
-      ? [carCtrl.pos.x, carCtrl.pos.z]
-      : [local.pos.x, local.pos.z];
+    if (myCarId !== null && amDriver) return [carCtrl.pos.x, carCtrl.pos.z];
+    if (myCarId !== null) {
+      const mesh = cars.get(myCarId)?.group;
+      if (mesh) return [mesh.position.x, mesh.position.z];
+    }
+    return [local.pos.x, local.pos.z];
   },
   get ry(): number {
-    return drivingCar !== null ? carCtrl.ry : local.ry;
+    return myCarId !== null && amDriver ? carCtrl.ry : local.ry;
   },
   get car(): number | null {
-    return drivingCar;
+    return myCarId;
+  },
+  get driver(): boolean {
+    return amDriver;
   },
   get speed(): number {
     return carCtrl.speed;
@@ -520,5 +544,20 @@ renderer.setAnimationLoop(() => {
     return (latestState?.bottles ?? [])
       .filter((b) => b.active)
       .map((b) => [b.p[0], b.p[2]]);
+  },
+  get cars(): { id: number; kind: string; seats: number }[] {
+    return (latestState?.cars ?? []).map((c) => ({
+      id: c.id,
+      kind: c.kind,
+      seats: c.occupants.length,
+    }));
+  },
+  // Test-only teleport, active with ?dev=1 (no-op otherwise)
+  teleport(x: number, z: number, ry?: number) {
+    if (!new URLSearchParams(location.search).has('dev')) return;
+    if (myCarId === null) {
+      local.pos.set(x, 0, z);
+      if (ry !== undefined) local.ry = ry;
+    }
   },
 };
