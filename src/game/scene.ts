@@ -14,11 +14,14 @@ import {
 import {
   asphaltTextures,
   brickTexture,
+  celestialTexture,
+  cloudTexture,
   facadeTexture,
   grassTexture,
   neonTexture,
   sandTextures,
   signTexture,
+  skyTexture,
 } from './textures';
 
 export interface Obstacle {
@@ -83,6 +86,106 @@ export function buildScene(
   scene.fog = night
     ? new THREE.FogExp2(0x07070d, 0.019)
     : new THREE.FogExp2(0xa8b8cc, 0.007);
+
+  // ——— Sky: gradient dome + sun/clouds (day) or stars/moon (night) ———
+  const SKY_CENTER = new THREE.Vector3(0, 0, 200);
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(560, 24, 12),
+    new THREE.MeshBasicMaterial({
+      map: night
+        ? skyTexture([
+            [0, '#02020a'],
+            [0.45, '#0a0c1e'],
+            [0.62, '#141830'],
+            [1, '#1c1f38'],
+          ])
+        : skyTexture([
+            [0, '#3f6fb5'],
+            [0.42, '#7fa3d4'],
+            [0.58, '#b8cbe4'],
+            [1, '#d8e0ea'],
+          ]),
+      side: THREE.BackSide,
+      fog: false,
+      depthWrite: false,
+    }),
+  );
+  dome.position.copy(SKY_CENTER);
+  dome.renderOrder = -10;
+  root.add(dome);
+
+  const celestial = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: night
+        ? celestialTexture('rgba(228,232,244,1)', 'rgba(150,165,210,0.35)')
+        : celestialTexture('rgba(255,246,214,1)', 'rgba(255,214,140,0.45)'),
+      transparent: true,
+      fog: false,
+      depthWrite: false,
+    }),
+  );
+  celestial.material.toneMapped = false;
+  // Along the directional light's bearing, high on the dome
+  celestial.position
+    .set(night ? 130 : -150, 260, night ? -160 : 90)
+    .add(SKY_CENTER.clone().multiplyScalar(0.5));
+  celestial.scale.setScalar(night ? 42 : 60);
+  root.add(celestial);
+
+  const cloudDrift: THREE.Sprite[] = [];
+  if (night) {
+    // Starfield on the upper dome
+    const starPositions: number[] = [];
+    for (let i = 0; i < 550; i++) {
+      const az = Math.random() * Math.PI * 2;
+      const alt = 0.12 + Math.random() * (Math.PI / 2 - 0.14);
+      const r = 520;
+      starPositions.push(
+        SKY_CENTER.x + r * Math.cos(alt) * Math.cos(az),
+        r * Math.sin(alt),
+        SKY_CENTER.z + r * Math.cos(alt) * Math.sin(az),
+      );
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+    const stars = new THREE.Points(
+      starGeo,
+      new THREE.PointsMaterial({
+        color: 0xdde4f4,
+        size: 2.2,
+        sizeAttenuation: false,
+        transparent: true,
+        opacity: 0.85,
+        fog: false,
+        depthWrite: false,
+      }),
+    );
+    stars.renderOrder = -9;
+    root.add(stars);
+  } else {
+    const cloudMap = cloudTexture();
+    for (let i = 0; i < 12; i++) {
+      const cloud = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: cloudMap,
+          transparent: true,
+          opacity: 0.55 + Math.random() * 0.3,
+          fog: false,
+          depthWrite: false,
+        }),
+      );
+      cloud.position.set(
+        -240 + Math.random() * 480,
+        70 + Math.random() * 60,
+        -60 + Math.random() * 500,
+      );
+      const s = 60 + Math.random() * 70;
+      cloud.scale.set(s, s * 0.45, 1);
+      cloud.renderOrder = -8;
+      root.add(cloud);
+      cloudDrift.push(cloud);
+    }
+  }
 
   // Subtle image-based lighting so materials get specular life
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -875,6 +978,12 @@ export function buildScene(
       sun.position.copy(sun.target.position).add(sunOffset);
     },
     updateFlicker(t: number) {
+      // Lazy clouds crossing the sky
+      for (let i = 0; i < cloudDrift.length; i++) {
+        const cloud = cloudDrift[i];
+        cloud.position.x += (0.4 + (i % 3) * 0.2) * 0.016;
+        if (cloud.position.x > 260) cloud.position.x = -260;
+      }
       for (const item of flickerItems) {
         let k: number;
         if (item.neon) {

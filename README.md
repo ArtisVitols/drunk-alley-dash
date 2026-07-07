@@ -38,12 +38,13 @@ them in a wider radius, but most bottles hide in the alley on foot.
 **The road to ROUTE 65 (co-op):** the city's north gate opens onto a winding
 country road — asphalt at first, then a sandy track through green fields and
 pines. The road is blocked by junk: roadblocks, fallen logs, boulder piles.
-The team hops out and **holds E / the 🛠 button** at an obstacle to clear it —
-much faster together (solo ~15 s, full crew ~4 s). Off-road grass bogs cars
-down, sand makes the drunk swerving worse, and a distance readout counts down
-to the **ROUTE 65** junction. Get any occupied vehicle there (the RV fits the
-whole team) and the run is won — the host can start a fresh run from the
-victory screen. Bottles are strewn along the route, so keep gathering.
+The team hops out and **stands at the obstacle** — your drunk gets to work on
+it automatically, and a progress ring fills, much faster together (solo
+~15 s, full crew ~4 s). Off-road grass bogs cars down, sand makes the drunk
+swerving worse, and a distance readout counts down to the **ROUTE 65**
+junction. Get any occupied vehicle there (the RV fits the whole team) and the
+run is won — the host can start a fresh run from the victory screen. Bottles
+are strewn along the route, so keep gathering.
 
 ## Develop
 

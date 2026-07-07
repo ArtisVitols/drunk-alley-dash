@@ -11,7 +11,7 @@ const CAR_STATS: Record<
 > = {
   sedan: { max: 16, reverse: 6, accel: 15, turn: 2.3, radius: 1.1, sway: 0.5 },
   van: { max: 13.5, reverse: 5.5, accel: 11, turn: 2.0, radius: 1.3, sway: 0.65 },
-  rv: { max: 11, reverse: 4.5, accel: 8, turn: 1.7, radius: 1.5, sway: 0.95 },
+  rv: { max: 11.5, reverse: 4.5, accel: 8.5, turn: 1.7, radius: 1.85, sway: 0.95 },
   truck: { max: 13, reverse: 5.5, accel: 10, turn: 1.9, radius: 1.4, sway: 0.6 },
 };
 
@@ -106,22 +106,60 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
     addWheels(body, wheels, 0.32, [[-0.8, 1.25], [0.8, 1.25], [-0.8, -1.15], [0.8, -1.15]]);
     addLights(body, 0.85, 0.55, 2.1, -1.76);
   } else if (kind === 'rv') {
+    // The team ride: a proper beat-up motorhome, bigger than the rest
     const cream = std(0xe8e4d8, 0.55, 0.2);
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.9, 4.8), cream);
-    box.position.y = 1.35;
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.87, 0.28, 4.82), std(0xd07a2e, 0.5, 0.3));
-    stripe.position.y = 0.95;
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.7, 0.06), GLASS());
-    windshield.position.set(0, 1.75, 2.38);
-    const windowBand = new THREE.Mesh(new THREE.BoxGeometry(1.89, 0.5, 3.0), GLASS());
-    windowBand.position.set(0, 1.75, -0.5);
-    const roofBox = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.3, 1.2), std(0xcfc8b8, 0.6, 0.2));
-    roofBox.position.set(0, 2.45, 0.6);
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.1, 0.62), std(0xb8b0a0, 0.6, 0.2));
-    door.position.set(0.94, 0.95, -1.7);
-    body.add(box, stripe, windshield, windowBand, roofBox, door);
-    addWheels(body, wheels, 0.34, [[-0.85, 1.7], [0.85, 1.7], [-0.85, -1.6], [0.85, -1.6]]);
-    addLights(body, 0.9, 0.6, 2.42, -2.42);
+    const accent = std(0xd07a2e, 0.5, 0.3);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.3, 6.2), cream);
+    box.position.y = 1.6;
+    // Cab-over bunk jutting forward above the windshield
+    const bunk = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.85, 1.2), cream);
+    bunk.position.set(0, 2.32, 3.35);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.3, 6.22), accent);
+    stripe.position.y = 1.05;
+    const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(2.32, 0.12, 6.22), std(0x8a4a1a, 0.5, 0.3));
+    stripe2.position.y = 1.32;
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.85, 0.06), GLASS());
+    windshield.position.set(0, 1.95, 3.08);
+    const windowBand = new THREE.Mesh(new THREE.BoxGeometry(2.34, 0.55, 3.6), GLASS());
+    windowBand.position.set(0, 2.05, -0.7);
+    const roofBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.32, 1.6), std(0xcfc8b8, 0.6, 0.2));
+    roofBox.position.set(0, 2.9, 0.8);
+    // Rooftop solar panel + vent
+    const solar = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.06, 2.0), std(0x1c2b4a, 0.25, 0.7));
+    solar.position.set(0, 2.79, -1.6);
+    const vent = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.5), std(0xb8b0a0, 0.6, 0.2));
+    vent.position.set(0.6, 2.84, 2.6);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.75), std(0xb8b0a0, 0.6, 0.2));
+    door.position.set(1.16, 1.15, -2.2);
+    // Rear ladder
+    const ladder = new THREE.Group();
+    const railGeo = new THREE.CylinderGeometry(0.03, 0.03, 2.2, 6);
+    const railMat = std(0x9aa0a8, 0.35, 0.8);
+    for (const lx of [-0.22, 0.22]) {
+      const rail = new THREE.Mesh(railGeo, railMat);
+      rail.position.set(0.7 + lx, 1.7, -3.13);
+      ladder.add(rail);
+    }
+    for (let i = 0; i < 5; i++) {
+      const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.44, 6), railMat);
+      rung.rotation.z = Math.PI / 2;
+      rung.position.set(0.7, 0.85 + i * 0.42, -3.13);
+      ladder.add(rung);
+    }
+    // Spare wheel on the back
+    const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.24, 12), std(0x15161a, 0.8, 0.2));
+    spare.rotation.x = Math.PI / 2;
+    spare.position.set(-0.55, 1.25, -3.22);
+    // Awning roll along the door side
+    const awning = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.4, 8), accent);
+    awning.rotation.x = Math.PI / 2;
+    awning.position.set(1.2, 2.5, -0.8);
+    body.add(
+      box, bunk, stripe, stripe2, windshield, windowBand, roofBox,
+      solar, vent, door, ladder, spare, awning,
+    );
+    addWheels(body, wheels, 0.38, [[-1.05, 2.2], [1.05, 2.2], [-1.05, -2.0], [1.05, -2.0]]);
+    addLights(body, 1.15, 0.65, 3.12, -3.12);
   } else {
     // truck — cab up front, open cargo bed in the back
     const paint = std(0xd9b44f, 0.4, 0.5);
@@ -160,9 +198,9 @@ const SLOT_SPECS: Record<CarKind, { x: number; y: number; z: number; mode: 'lean
     { x: 0.9, y: 1.35, z: -1.1, mode: 'lean' },
   ],
   rv: [
-    { x: 0.98, y: 1.65, z: 1.4, mode: 'lean' },
-    { x: -0.98, y: 1.65, z: 0.1, mode: 'lean' },
-    { x: 0.98, y: 1.65, z: -1.3, mode: 'lean' },
+    { x: 1.2, y: 1.95, z: 1.6, mode: 'lean' },
+    { x: -1.2, y: 1.95, z: 0.1, mode: 'lean' },
+    { x: 1.2, y: 1.95, z: -1.6, mode: 'lean' },
   ],
   truck: [
     { x: 0.88, y: 1.15, z: 1.3, mode: 'lean' },

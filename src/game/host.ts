@@ -249,13 +249,14 @@ export class HostSim {
       return false;
     });
 
-    // Team clears road obstacles: on-foot players holding the work
-    // action near one push its progress; more helpers = faster.
+    // Team clears road obstacles just by standing at them on foot —
+    // no button gymnastics (mobile hold gestures proved unreliable).
+    // More helpers = faster.
     for (const ob of s.roadObstacles) {
       if (ob.cleared) continue;
       let workers = 0;
       for (const pl of s.players) {
-        if (pl.car !== null || !pl.working) continue;
+        if (pl.car !== null) continue;
         const dx = pl.p[0] - ob.p[0];
         const dz = pl.p[2] - ob.p[2];
         if (dx * dx + dz * dz < WORK_RADIUS * WORK_RADIUS) workers++;

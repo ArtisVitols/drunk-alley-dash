@@ -63,14 +63,14 @@ a00b27b8; recreate from this outline if gone:
    slides around each other, never overlap below the radii sum.
 7. Road trip: `__dad.obstacles` (5, host resets them per run), `__dad.surface`
    (city/asphalt/sand/grass — use `__dad.roadPoint(t)` for on-road coords),
-   `__dad.phase`. Clearing: stand within 6 m of an uncleared obstacle on
-   foot, hold E → `__dad.working` true → progress climbs (solo 15 sim-secs —
-   minutes of wall time under SwiftShader; use ~240 s timeouts). Win: drive
-   any occupied car past `roadPoint(0.99)` → phase `'won'`, `#won` overlay,
-   host's `#again-btn` restarts. NOTE: on the host, `__dad`'s state flips
-   before the next render frame — wait for DOM/overlay changes, don't read
-   them instantly after a phase flip.
-6. Disconnect probe: close browser B; A's scoreboard must drop to 1 row
+   `__dad.phase`. Clearing is proximity-based: just stand within 6 m of an
+   uncleared obstacle on foot → progress climbs, no key/button needed (solo
+   15 sim-secs — minutes of wall time under SwiftShader; use ~240 s
+   timeouts). Win: drive any occupied car past `roadPoint(0.99)` → phase
+   `'won'`, `#won` overlay, host's `#again-btn` restarts. NOTE: on the host,
+   `__dad`'s state flips before the next render frame — wait for DOM/overlay
+   changes, don't read them instantly after a phase flip.
+8. Disconnect probe: close browser B; A's scoreboard must drop to 1 row
    within ~5 s (heartbeat timeout in `src/net/peer.ts`).
 
 ## Gotchas

@@ -64,7 +64,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 220);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
 
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
@@ -171,7 +171,7 @@ canvas.addEventListener('pointercancel', joyEnd);
 
 if (window.matchMedia('(pointer: coarse)').matches) {
   const help = document.getElementById('help');
-  if (help) help.innerHTML = 'Drag to stagger &nbsp; 🚗 button for cars &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
+  if (help) help.innerHTML = 'Drag to stagger &nbsp; 🚗 button for cars &nbsp; stand at junk to clear &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
 }
 
 // --- Cars: hop in / get out -------------------------------------------------
@@ -214,6 +214,8 @@ function nearObstacle(): boolean {
   return false;
 }
 
+// Clearing obstacles is automatic by proximity (hold gestures proved
+// unreliable on phones) — the 'work' mode is just a status chip.
 type BtnMode = 'exit' | 'work' | 'enter' | 'drive' | null;
 let btnMode: BtnMode = null;
 
@@ -221,42 +223,38 @@ function updateCarButton() {
   let mode: BtnMode = null;
   if (latestState?.phase === 'play') {
     if (myCarId !== null) mode = 'exit';
-    else if (nearObstacle()) mode = 'work';
     else {
       const near = nearCarWithSeat();
       if (near) mode = near.occupied ? 'enter' : 'drive';
+      else if (nearObstacle()) mode = 'work';
     }
   }
+  working = mode === 'work';
   if (mode !== btnMode) {
     btnMode = mode;
     if (mode === null) {
       carBtn.classList.add('hidden');
-      working = false;
     } else {
       carBtn.textContent =
         mode === 'exit' ? '🚪 Get out'
-        : mode === 'work' ? '🛠 Hold to clear'
+        : mode === 'work' ? '🛠 Clearing…'
         : mode === 'enter' ? '🚗 Hop in'
         : '🚗 Drive';
+      carBtn.classList.toggle('status', mode === 'work');
       carBtn.classList.remove('hidden');
     }
   }
-  if (mode !== 'work') working = false;
 }
 
-// Tap = car in/out; press-and-hold = clear the obstacle. All handled
-// on raw pointer events (no click) so we can suppress the browser's
-// long-press text-selection / context menu on phones.
+// Raw pointer events (no click) so the browser's long-press
+// text-selection / context menu never interferes on phones.
 let btnPressed = false;
 carBtn.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   btnPressed = true;
-  carBtn.setPointerCapture(e.pointerId);
-  if (btnMode === 'work') working = true;
 });
 carBtn.addEventListener('pointerup', (e) => {
   e.preventDefault();
-  working = false;
   if (!btnPressed) return;
   btnPressed = false;
   if (btnMode === 'exit') requestCar(false);
@@ -264,19 +262,14 @@ carBtn.addEventListener('pointerup', (e) => {
 });
 carBtn.addEventListener('pointercancel', () => {
   btnPressed = false;
-  working = false;
 });
 carBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
     if (myCarId !== null) requestCar(false);
-    else if (nearObstacle()) working = true;
     else if (nearCarWithSeat()) requestCar(true);
   }
-});
-window.addEventListener('keyup', (e) => {
-  if (e.code === 'KeyE') working = false;
 });
 
 // --- Session state ----------------------------------------------------------
@@ -294,7 +287,7 @@ const local = new LocalController();
 const carCtrl = new CarController();
 let myCarId: number | null = null;
 let amDriver = false;
-let working = false; // holding the clear-obstacle action
+let working = false; // auto-set while standing at an uncleared obstacle
 let myMesh: THREE.Group | null = null;
 
 const remotes = new Map<string, RemoteAvatar>();

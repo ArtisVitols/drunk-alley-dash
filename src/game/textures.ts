@@ -104,6 +104,59 @@ export function brickTexture(repeatX: number, repeatY: number, hue: number, sat:
   return toTexture(canvas, repeatX, repeatY);
 }
 
+// Vertical sky gradient, mapped onto an inside-out dome.
+export function skyTexture(stops: [number, string][]) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  for (const [at, color] of stops) g.addColorStop(at, color);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 16, 512);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Soft cumulus blob for cloud sprites.
+export function cloudTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  for (let i = 0; i < 14; i++) {
+    const x = 40 + Math.random() * 176;
+    const y = 45 + Math.random() * 45;
+    const r = 22 + Math.random() * 30;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Sun or moon: bright disc with a soft halo.
+export function celestialTexture(core: string, halo: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, core);
+  g.addColorStop(0.32, core);
+  g.addColorStop(0.45, halo);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 // Sandy country road: warm beige base with grit and dark tire tracks
 // running along the V axis (the road ribbon maps V along its length).
 export function sandTextures(repeatX: number, repeatY: number) {

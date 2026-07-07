@@ -297,6 +297,14 @@ button:disabled {
   white-space: nowrap;
 }
 
+#car-btn.status {
+  background: rgba(12, 12, 20, 0.75);
+  color: #ffd9ad;
+  border: 1px solid rgba(255, 176, 102, 0.6);
+  cursor: default;
+  transform: none;
+}
+
 #car-btn {
   pointer-events: auto;
   touch-action: none;
