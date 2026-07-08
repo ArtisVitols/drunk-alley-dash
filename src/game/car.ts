@@ -4,6 +4,7 @@ import type { Obstacle, WorldGeom } from './scene';
 import type { Circle } from './player';
 import { PLAYER_COLORS, collideCircle, collideCircles } from './player';
 import { elevation } from './road';
+import { carPaintTexture, plateTexture } from './textures';
 
 // Terrain slope along a heading — used to pitch car meshes on hills
 export function slopePitch(x: number, z: number, ry: number): number {
@@ -72,7 +73,15 @@ interface CarRig {
 const std = (color: number, roughness = 0.5, metalness = 0.4) =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness });
 
-const GLASS = () => std(0x1c2126, 0.15, 0.7);
+const GLASS = () => {
+  const mat = std(0x1c2126, 0.15, 0.7);
+  mat.envMapIntensity = 1.4; // windows catch the sky/neon
+  return mat;
+};
+
+// Body paint: tinted by color, worn by the shared grime/scratch canvas
+const paint = (color: number, roughness = 0.4, metalness = 0.5) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness, map: carPaintTexture() });
 
 function addWheels(
   body: THREE.Group,
@@ -82,14 +91,21 @@ function addWheels(
 ) {
   const geo = new THREE.CylinderGeometry(radius, radius, 0.24, 12);
   const mat = std(0x15161a, 0.8, 0.2);
+  // Hubcap pokes out both faces and spins with the wheel
+  const capGeo = new THREE.CylinderGeometry(radius * 0.5, radius * 0.5, 0.27, 8);
+  const capMat = std(0x8f949c, 0.35, 0.85);
   for (const [x, z] of positions) {
     const wheel = new THREE.Mesh(geo, mat);
     wheel.rotation.z = Math.PI / 2;
     wheel.position.set(x, radius, z);
+    wheel.add(new THREE.Mesh(capGeo, capMat));
     body.add(wheel);
     wheels.push(wheel);
   }
 }
+
+// Deterministic-ish Lithuanian plate per mesh
+const plateText = () => `DAD ${Math.floor(100 + Math.random() * 900)}`;
 
 function addLights(body: THREE.Group, halfW: number, y: number, front: number, rear: number) {
   const headMat = new THREE.MeshStandardMaterial({
@@ -102,21 +118,64 @@ function addLights(body: THREE.Group, halfW: number, y: number, front: number, r
     emissive: 0xd92222,
     emissiveIntensity: 1.1,
   });
+  // Night-only headlight beams: additive cones reaching out ahead,
+  // toggled by setCarNight()
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xffe9b0,
+    transparent: true,
+    opacity: 0.055,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   for (const side of [-1, 1]) {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.06), headMat);
     head.position.set(halfW * 0.66 * side, y, front);
     const tail = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.06), tailMat);
     tail.position.set(halfW * 0.66 * side, y, rear);
-    body.add(head, tail);
+    // Narrow at the lamp, spreading forward and dipping to the road
+    const beam = new THREE.Mesh(new THREE.ConeGeometry(0.75, 4.5, 8, 1, true), beamMat);
+    beam.rotation.x = Math.PI / 2 - 0.09;
+    beam.position.set(halfW * 0.66 * side, y - 0.18, front + 2.25);
+    beam.name = 'headbeam';
+    beam.visible = false;
+    body.add(head, tail, beam);
   }
+  // License plates front + rear
+  const text = plateText();
+  const plateGeo = new THREE.PlaneGeometry(0.5, 0.125);
+  const plateMat = new THREE.MeshStandardMaterial({ map: plateTexture(text), roughness: 0.4 });
+  const plateF = new THREE.Mesh(plateGeo, plateMat);
+  plateF.position.set(0, y - 0.18, front + 0.04);
+  const plateR = new THREE.Mesh(plateGeo, plateMat);
+  plateR.position.set(0, y - 0.18, rear - 0.04);
+  plateR.rotation.y = Math.PI;
+  body.add(plateF, plateR);
+}
+
+// Toggle night dressing (headlight beams) on a car mesh
+export function setCarNight(carGroup: THREE.Group, night: boolean) {
+  carGroup.traverse((o) => {
+    if (o.name === 'headbeam') o.visible = night;
+  });
+}
+
+// Dark dashboard shelf + steering wheel visible through the windshield
+function addDashboard(body: THREE.Group, y: number, z: number, width: number) {
+  const dash = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, 0.35), std(0x1a1c20, 0.8, 0.1));
+  dash.position.set(0, y, z);
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 6, 12), std(0x26282e, 0.6, 0.2));
+  wheel.position.set(-width * 0.28, y + 0.12, z - 0.12);
+  wheel.rotation.x = -Math.PI / 2 + 0.5;
+  body.add(dash, wheel);
 }
 
 // Four very different rides. All face +Z.
 function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
   if (kind === 'sedan' || kind === 'caravan') {
     // The tow car wears green so nobody confuses it with a plain sedan
-    const paint = std(kind === 'caravan' ? 0x3f8f5f : 0xd9534f, 0.35, 0.55);
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 3.1), paint);
+    const paintMat = paint(kind === 'caravan' ? 0x3f8f5f : 0xd9534f, 0.35, 0.55);
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 3.1), paintMat);
     hull.position.y = 0.55;
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.52, 1.5), GLASS());
     cabin.position.set(0, 1.06, -0.15);
@@ -125,13 +184,14 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
     const bumperR = bumperF.clone();
     bumperR.position.z = -1.58;
     body.add(hull, cabin, bumperF, bumperR);
+    addDashboard(body, 0.92, 0.45, 1.3);
     addWheels(body, wheels, 0.3, [[-0.72, 1.0], [0.72, 1.0], [-0.72, -1.0], [0.72, -1.0]]);
     addLights(body, 0.75, 0.62, 1.56, -1.56);
   } else if (kind === 'van') {
-    const paint = std(0x4f7bd9, 0.4, 0.5);
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.5, 3.5), paint);
+    const paintMat = paint(0x4f7bd9, 0.4, 0.5);
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.5, 3.5), paintMat);
     box.position.y = 1.05;
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 0.5), paint);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 0.5), paintMat);
     nose.position.set(0, 0.6, 1.85);
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.55, 0.06), GLASS());
     windshield.position.set(0, 1.35, 1.73);
@@ -143,7 +203,7 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
     addLights(body, 0.85, 0.55, 2.1, -1.76);
   } else if (kind === 'rv') {
     // The team ride: a proper beat-up motorhome, bigger than the rest
-    const cream = std(0xe8e4d8, 0.55, 0.2);
+    const cream = paint(0xe8e4d8, 0.55, 0.2);
     const accent = std(0xd07a2e, 0.5, 0.3);
     const box = new THREE.Mesh(new THREE.BoxGeometry(2.3, 2.3, 6.2), cream);
     box.position.y = 1.6;
@@ -194,15 +254,16 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
       box, bunk, stripe, stripe2, windshield, windowBand, roofBox,
       solar, vent, door, ladder, spare, awning,
     );
+    addDashboard(body, 1.62, 2.75, 1.9);
     addWheels(body, wheels, 0.38, [[-1.05, 2.2], [1.05, 2.2], [-1.05, -2.0], [1.05, -2.0]]);
     addLights(body, 1.15, 0.65, 3.12, -3.12);
   } else {
     // truck — cab up front, open cargo bed in the back
-    const paint = std(0xd9b44f, 0.4, 0.5);
+    const paintMat = paint(0xd9b44f, 0.4, 0.5);
     const bedMat = std(0x5a5e64, 0.7, 0.5);
     const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.35, 4.4), std(0x2a2d33, 0.7, 0.5));
     chassis.position.y = 0.5;
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.1, 1.5), paint);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.1, 1.5), paintMat);
     cab.position.set(0, 1.2, 1.35);
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.5, 0.06), GLASS());
     windshield.position.set(0, 1.42, 2.08);
@@ -224,7 +285,7 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
 // ball, so rotating this group articulates the whole trailer; the body
 // sits behind it, single axle under the middle.
 function buildTrailer(pivot: THREE.Group, wheels: THREE.Mesh[]) {
-  const cream = std(0xece7d9, 0.55, 0.2);
+  const cream = paint(0xece7d9, 0.55, 0.2);
   const accent = std(0x4a7a9d, 0.5, 0.3);
   // Drawbar from the hitch back to the box
   const bar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 1.1), std(0x2a2d33, 0.6, 0.6));
@@ -258,6 +319,28 @@ function buildTrailer(pivot: THREE.Group, wheels: THREE.Mesh[]) {
   const jockey = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 8), std(0x15161a, 0.8, 0.2));
   jockey.rotation.z = Math.PI / 2;
   jockey.position.set(0, 0.12, -0.35);
+  // Homely curtains glowing faintly behind the glass
+  const curtainMat = new THREE.MeshStandardMaterial({
+    color: 0xc9a86a,
+    roughness: 0.9,
+    emissive: 0x8a6a30,
+    emissiveIntensity: 0.25,
+  });
+  for (const side of [-1, 1]) {
+    for (const cz of [-TRAILER_BODY + 0.35, -TRAILER_BODY - 0.75]) {
+      const curtain = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.36, 0.5), curtainMat);
+      curtain.position.set(0.93 * side, 1.5, cz);
+      pivot.add(curtain);
+    }
+  }
+  // Rear plate
+  const plate = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.5, 0.125),
+    new THREE.MeshStandardMaterial({ map: plateTexture(plateText()), roughness: 0.4 }),
+  );
+  plate.position.set(0, 0.55, -TRAILER_BODY - 1.51);
+  plate.rotation.y = Math.PI;
+  pivot.add(plate);
   pivot.add(bar, barL, barR, box, roof, stripe, windowBand, rearWin, door, vent, jockey);
   // Single axle
   const geo = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 12);

@@ -24,6 +24,7 @@ import {
   TRAILER_RADIUS,
   applyCarWobble,
   carRadius,
+  setCarNight,
   setTrailerAngle,
   slopePitch,
   syncCarPassengers,
@@ -124,6 +125,8 @@ muteBtn.addEventListener('click', () => {
 
 function setMode(mode: SceneMode) {
   if (world.mode === mode) return;
+  // Cars persist across the environment swap — retoggle their beams
+  for (const car of cars.values()) setCarNight(car.group, mode === 'night');
   world.dispose();
   for (const steam of steams) steam.dispose();
   rain?.dispose();
@@ -584,6 +587,7 @@ function applyState(state: WorldState, t: number) {
     if (!car) {
       car = new RemoteCar(c.kind);
       car.snap(c.p, c.ry, c.tr);
+      setCarNight(car.group, state.mode === 'night');
       scene.add(car.group);
       cars.set(c.id, car);
     }

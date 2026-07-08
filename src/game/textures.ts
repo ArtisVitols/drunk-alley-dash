@@ -532,6 +532,68 @@ export function billboardTexture(lines: string[], bg: string, fg: string) {
   return texture;
 }
 
+// Shared car-paint wear layer: white base (tinted by material.color)
+// with bottom-up road grime, faint scratches and dings. One 256² canvas
+// serves every vehicle.
+let paintCache: THREE.Texture | null = null;
+export function carPaintTexture() {
+  if (paintCache) return paintCache;
+  const { canvas, ctx } = makeCanvas(256);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, 256, 256);
+  // Road grime creeping up from the rocker panels
+  const grime = ctx.createLinearGradient(0, 150, 0, 256);
+  grime.addColorStop(0, 'rgba(60,52,40,0)');
+  grime.addColorStop(1, 'rgba(60,52,40,0.5)');
+  ctx.fillStyle = grime;
+  ctx.fillRect(0, 150, 256, 106);
+  // Faint scratches
+  ctx.strokeStyle = 'rgba(230,230,235,0.35)';
+  for (let i = 0; i < 8; i++) {
+    ctx.lineWidth = 0.6 + Math.random();
+    ctx.beginPath();
+    const y = Math.random() * 256;
+    ctx.moveTo(Math.random() * 100, y);
+    ctx.lineTo(120 + Math.random() * 136, y + (Math.random() - 0.5) * 22);
+    ctx.stroke();
+  }
+  // Dings and rust spots
+  for (let i = 0; i < 12; i++) {
+    ctx.fillStyle = `rgba(${90 + Math.random() * 40},${60 + Math.random() * 25},35,${0.15 + Math.random() * 0.25})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * 256, Math.random() * 256, 1.5 + Math.random() * 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  paintCache = toTexture(canvas, 1, 1);
+  return paintCache;
+}
+
+// Lithuanian license plate: blue EU strip, black text on white.
+export function plateTexture(text: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 32;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#f4f4f0';
+  ctx.fillRect(0, 0, 128, 32);
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, 126, 30);
+  ctx.fillStyle = '#003399';
+  ctx.fillRect(0, 0, 18, 32);
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = '10px system-ui, sans-serif';
+  ctx.fillText('LT', 4, 28);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.font = '900 20px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 74, 17);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 export function neonTexture(text: string, color: string) {
   const canvas = document.createElement('canvas');
   canvas.width = 512;
