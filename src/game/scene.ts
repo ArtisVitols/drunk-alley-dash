@@ -201,26 +201,34 @@ export function buildScene(
 
   root.add(
     night
-      ? new THREE.HemisphereLight(0x3a3a55, 0x0a0a0f, 0.65)
-      : new THREE.HemisphereLight(0xcfe0ff, 0x5c584a, 1.0),
+      ? new THREE.HemisphereLight(0x3a3a55, 0x08080d, 0.65)
+      : new THREE.HemisphereLight(0xcfe0ff, 0x524e40, 1.0),
   );
 
-  // Night: cold moonlight. Day: Baltic afternoon sun.
+  // Night: cold blue-teal moonlight. Day: warm Baltic afternoon sun.
   const sun = night
-    ? new THREE.DirectionalLight(0x7484b8, 0.55)
-    : new THREE.DirectionalLight(0xfff0d0, 2.0);
+    ? new THREE.DirectionalLight(0x93aae0, 0.55)
+    : new THREE.DirectionalLight(0xfff2dd, 2.0);
   sun.position.set(night ? 14 : -16, night ? 26 : 30, (night ? -18 : -12) + 45);
   sun.target.position.set(0, 0, 45);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -55;
-  sun.shadow.camera.right = 55;
-  sun.shadow.camera.top = 85;
-  sun.shadow.camera.bottom = -85;
+  // Tight frustum = crisp shadows; focusShadow() keeps it on the player
+  sun.shadow.camera.left = -45;
+  sun.shadow.camera.right = 45;
+  sun.shadow.camera.top = 70;
+  sun.shadow.camera.bottom = -70;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 120;
   sun.shadow.bias = -0.0004;
   root.add(sun, sun.target);
+
+  // Dim opposing fill so shadowed faces keep some shape instead of
+  // dropping to flat black. No shadows — zero extra draw cost.
+  const fill = new THREE.DirectionalLight(night ? 0x2a3450 : 0xbfd0e8, night ? 0.08 : 0.15);
+  fill.position.set(night ? -14 : 16, 20, 45 + (night ? 18 : 12));
+  fill.target.position.set(0, 0, 45);
+  root.add(fill, fill.target);
 
   // Ground — cracked, stained asphalt covering alley + city
   const asphalt = asphaltTextures(6, 10);
@@ -261,12 +269,18 @@ export function buildScene(
   const obstacles: Obstacle[] = [];
 
   // Brick for the alley's inner faces — Vilnius old-town ochre and rose
+  const brickTexA = brickTexture(10, 2, 30, 34, night ? 30 : 42);
   const brickA = new THREE.MeshStandardMaterial({
-    map: brickTexture(10, 2, 30, 34, night ? 30 : 42),
+    map: brickTexA.map,
+    bumpMap: brickTexA.bumpMap,
+    bumpScale: 0.8,
     roughness: 0.95,
   });
+  const brickTexB = brickTexture(10, 2, 4, 22, night ? 26 : 38);
   const brickB = new THREE.MeshStandardMaterial({
-    map: brickTexture(10, 2, 4, 22, night ? 26 : 38),
+    map: brickTexB.map,
+    bumpMap: brickTexB.bumpMap,
+    bumpScale: 0.8,
     roughness: 0.95,
   });
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x23211e, roughness: 0.95 });
@@ -278,11 +292,15 @@ export function buildScene(
   const fillerW = CITY_HALF_WIDTH - ALLEY_HALF_WIDTH; // 37
   const fillerGeo = new THREE.BoxGeometry(fillerW, 12, ALLEY_HALF_LENGTH * 2 + 1);
   for (const side of [-1, 1] as const) {
+    const facadeTex = facadeTexture(side < 0 ? 36 : 8, 30, night ? 30 : 44, litProb);
     const facade = new THREE.MeshStandardMaterial({
-      map: facadeTexture(side < 0 ? 36 : 8, 30, night ? 30 : 44, litProb),
+      map: facadeTex.map,
+      bumpMap: facadeTex.bumpMap,
+      bumpScale: 0.7,
       roughness: 0.9,
     });
     facade.map!.repeat.set(2, 1);
+    facade.bumpMap!.repeat.set(2, 1);
     // px, nx, py, ny, pz, nz — inner alley face gets brick
     const mats =
       side < 0
@@ -309,11 +327,15 @@ export function buildScene(
   // City blocks — one building per block, Vilnius pastel facades
   const blockHues = [36, 205, 10, 48];
   CITY_BLOCKS.forEach((block, i) => {
+    const facadeTex = facadeTexture(blockHues[i], i === 1 ? 10 : 32, night ? 32 : 48, litProb);
     const facade = new THREE.MeshStandardMaterial({
-      map: facadeTexture(blockHues[i], i === 1 ? 10 : 32, night ? 32 : 48, litProb),
+      map: facadeTex.map,
+      bumpMap: facadeTex.bumpMap,
+      bumpScale: 0.7,
       roughness: 0.9,
     });
     facade.map!.repeat.set(2, 1);
+    facade.bumpMap!.repeat.set(2, 1);
     const building = new THREE.Mesh(
       new THREE.BoxGeometry(BLOCK_HALF * 2, block.h, BLOCK_HALF * 2),
       [facade, facade, roofMat, roofMat, facade, facade],
@@ -400,9 +422,15 @@ export function buildScene(
     }
     grassGeo.computeVertexNormals();
   }
+  const grassTex = grassTexture(12, 34);
   const grass = new THREE.Mesh(
     grassGeo,
-    new THREE.MeshStandardMaterial({ map: grassTexture(12, 34), roughness: 0.95 }),
+    new THREE.MeshStandardMaterial({
+      map: grassTex.map,
+      bumpMap: grassTex.bumpMap,
+      bumpScale: 0.35,
+      roughness: 0.95,
+    }),
   );
   grass.receiveShadow = true;
   root.add(grass);

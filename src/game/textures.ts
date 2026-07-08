@@ -19,6 +19,30 @@ function toTexture(canvas: HTMLCanvasElement, repeatX: number, repeatY: number, 
   return texture;
 }
 
+// The color canvas doubles as a bump map (dark = recessed): mortar
+// lines, cracks and window holes read as real depth under raking light.
+function toBump(canvas: HTMLCanvasElement, repeatX: number, repeatY: number) {
+  return toTexture(canvas, repeatX, repeatY, false);
+}
+
+// Cheap baked AO: darken the canvas edges so surfaces ground
+// themselves where they meet roofs/streets/corners.
+function edgeAO(ctx: CanvasRenderingContext2D, w: number, h: number, strength = 0.35) {
+  const m = Math.round(Math.min(w, h) * 0.08);
+  for (const [x0, y0, x1, y1, rx, ry, rw, rh] of [
+    [0, 0, 0, m, 0, 0, w, m], // top
+    [0, h, 0, h - m, 0, h - m, w, m], // bottom
+    [0, 0, m, 0, 0, 0, m, h], // left
+    [w, 0, w - m, 0, w - m, 0, m, h], // right
+  ] as const) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, `rgba(0,0,0,${strength})`);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(rx, ry, rw, rh);
+  }
+}
+
 export function asphaltTextures(repeatX: number, repeatY: number) {
   const { canvas, ctx } = makeCanvas();
   ctx.fillStyle = '#26262d';
@@ -101,7 +125,8 @@ export function brickTexture(repeatX: number, repeatY: number, hue: number, sat:
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
 
-  return toTexture(canvas, repeatX, repeatY);
+  edgeAO(ctx, 512, 512, 0.3);
+  return { map: toTexture(canvas, repeatX, repeatY), bumpMap: toBump(canvas, repeatX, repeatY) };
 }
 
 // Vertical sky gradient, mapped onto an inside-out dome.
@@ -213,7 +238,7 @@ export function grassTexture(repeatX: number, repeatY: number) {
     ctx.fillStyle = g;
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  return toTexture(canvas, repeatX, repeatY);
+  return { map: toTexture(canvas, repeatX, repeatY), bumpMap: toBump(canvas, repeatX, repeatY) };
 }
 
 // Green highway sign, white border and text — the ROUTE 65 banner.
@@ -290,7 +315,8 @@ export function facadeTexture(hue: number, sat: number, light: number, litProb: 
   ctx.fillStyle = grime;
   ctx.fillRect(0, 380, 512, 132);
 
-  return toTexture(canvas, 1, 1);
+  edgeAO(ctx, 512, 512, 0.35);
+  return { map: toTexture(canvas, 1, 1), bumpMap: toBump(canvas, 1, 1) };
 }
 
 export function neonTexture(text: string, color: string) {

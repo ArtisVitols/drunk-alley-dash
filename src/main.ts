@@ -79,7 +79,7 @@ renderer.setPixelRatio(lofi ? 1 : Math.min(window.devicePixelRatio, 1.75));
 renderer.shadowMap.enabled = !lofi;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.15;
+renderer.toneMappingExposure = 1.1; // day baseline; setMode raises it at night
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
@@ -87,7 +87,7 @@ const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 1200);
 const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 // Day values; setMode() swaps to punchier night bloom
-const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.3, 0.5, 0.9);
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.5, 0.85);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
@@ -130,8 +130,10 @@ function setMode(mode: SceneMode) {
   world = buildScene(scene, renderer, mode);
   steams = world.steamVents.map((vent) => new Steam(scene, vent));
   rain = mode === 'night' && !lofi ? new Rain(scene) : null;
-  bloom.strength = mode === 'night' ? 0.55 : 0.3;
-  bloom.threshold = mode === 'night' ? 0.62 : 0.9;
+  bloom.strength = mode === 'night' ? 0.55 : 0.35;
+  bloom.threshold = mode === 'night' ? 0.62 : 0.85;
+  // Moodier nights, cleaner days
+  renderer.toneMappingExposure = mode === 'night' ? 1.25 : 1.1;
 }
 
 // --- Input ----------------------------------------------------------------
@@ -862,6 +864,9 @@ renderer.setAnimationLoop(() => {
   },
   get roadkill(): number {
     return critters.kills;
+  },
+  get drawCalls(): number {
+    return renderer.info.render.calls;
   },
   get critterPos(): [number, number][] {
     return critters.positions;
