@@ -60,9 +60,16 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   on the scene and survive. Collision = rectangular world bounds + AABB obstacle
   list (`collideCircle` in `src/game/player.ts`); no physics engine. The world
   is ~490 m long — shadows follow the local player (`focusShadow`).
-- **Rendering**: ACES + UnrealBloom + soft shadows, but `lofi` mode
-  (auto-detected SwiftShader/llvmpipe, or `?fx=lo|hi`) disables bloom/shadows/rain.
-  Merge static decor geometry (`mergeGeometries`) — SwiftShader dies by draw count.
+- **Rendering**: ACES (exposure per mode: 1.1 day / 1.25 night) + UnrealBloom +
+  soft shadows + one no-shadow fill light, but `lofi` mode (auto-detected
+  SwiftShader/llvmpipe, or `?fx=lo|hi`) disables bloom/shadows/rain/god-rays.
+  Merge static decor geometry (`mergeGeometries`) — SwiftShader dies by draw
+  count; NOTE `IcosahedronGeometry` is non-indexed and cannot merge with
+  indexed primitives. Canvas color textures double as bumpMaps (`toBump` in
+  textures.ts); `carPaintTexture` is a shared wear layer tinted per vehicle;
+  night-only extras (headlight beams via `setCarNight`, lamp light pools)
+  toggle with the mode. `__dad.drawCalls` reports per-frame draw calls
+  (day city view ≈ 270).
 - **Audio** (`src/game/sound.ts`): everything synthesized with WebAudio (no
   files); context unlocks on first gesture. Engine loop follows the smoothed
   RPM from `src/game/gauges.ts` (canvas dials, shown while aboard). Ambient
