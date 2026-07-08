@@ -124,6 +124,12 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
   };
   const armL = makeArm(-1);
   const armR = makeArm(1);
+  // A trusty whacking stick in the left hand (bottle hand stays sacred)
+  const stickMat = std(0x6b4a2a, 0.9);
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.038, 0.85, 7), stickMat);
+  stick.position.set(0, -0.3, 0.26);
+  stick.rotation.x = Math.PI / 2 - 0.35; // resting on the shoulder-ish, tip forward-up
+  armL.elbow.add(stick);
   // Bottle glued into the right hand
   const bottleMat = new THREE.MeshStandardMaterial({
     color: 0x7a4210,
@@ -250,6 +256,23 @@ export function applyWobble(mesh: THREE.Group, t: number, moving: boolean) {
   }
 }
 
+export const SWING_SECONDS = 0.4;
+
+// Overhead stick chop, layered on top of applyWobble (call it after).
+// k is swing progress in [0, 1]: windup → chop → settle.
+export function applySwing(mesh: THREE.Group, k: number) {
+  const r = mesh.userData.rig as Rig | undefined;
+  if (!r) return;
+  let a: number;
+  if (k < 0.3) a = -0.3 - (k / 0.3) * 2.0; // raise the stick behind the head
+  else if (k < 0.6) a = -2.3 + ((k - 0.3) / 0.3) * 3.2; // the chop
+  else a = 0.9 - ((k - 0.6) / 0.4) * 1.2; // settle back
+  r.shoulderL.rotation.x = a;
+  r.elbowL.rotation.x = 0.15 + Math.max(0, -a) * 0.2;
+  // Whole body leans into the blow
+  r.rig.rotation.x += Math.sin(Math.min(1, k) * Math.PI) * 0.2;
+}
+
 export interface Circle {
   x: number;
   z: number;
@@ -357,16 +380,21 @@ export class RemoteAvatar {
   private targetRy = 0;
   private moving = false;
   private hasTarget = false;
+  private lastSwing = -1;
+  private swingT = SWING_SECONDS;
 
   constructor(colorIndex: number, name: string) {
     this.group = createPlayerMesh(colorIndex, name);
   }
 
-  setTarget(p: Vec3, ry: number, moving: boolean) {
+  setTarget(p: Vec3, ry: number, moving: boolean, swing = 0) {
     // y is derived from terrain, never from the network
     this.targetPos.set(p[0], elevation(p[0], p[2]), p[2]);
     this.targetRy = ry;
     this.moving = moving;
+    // Counter advanced → replay the stick swing (skip the initial sync)
+    if (this.lastSwing >= 0 && swing > this.lastSwing) this.swingT = 0;
+    this.lastSwing = swing;
     if (!this.hasTarget) {
       this.group.position.copy(this.targetPos);
       this.group.rotation.y = ry;
@@ -382,5 +410,9 @@ export class RemoteAvatar {
       ((this.targetRy - this.group.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.group.rotation.y += delta * k;
     applyWobble(this.group, t, this.moving);
+    if (this.swingT < SWING_SECONDS) {
+      this.swingT += dt;
+      applySwing(this.group, Math.min(1, this.swingT / SWING_SECONDS));
+    }
   }
 }

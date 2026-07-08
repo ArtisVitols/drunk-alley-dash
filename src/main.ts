@@ -9,6 +9,8 @@ import { PickupFX, Rain, Steam } from './game/fx';
 import {
   LocalController,
   RemoteAvatar,
+  SWING_SECONDS,
+  applySwing,
   applyWobble,
   collideCircle,
   createPlayerMesh,
@@ -27,8 +29,9 @@ import {
   syncCarPassengers,
   trailerCenterXZ,
 } from './game/car';
-import { TouchControls, type ControlMode } from './game/controls';
-import { Critters } from './game/critters';
+import { TouchControls } from './game/controls';
+import { Bums } from './game/bums';
+import { Critters, type KillCircle } from './game/critters';
 import { Gauges } from './game/gauges';
 import { RoadObstacles } from './game/obstacles';
 import { FINISH, GATE_Z, elevation, roadSurface, sampleRoad } from './game/road';
@@ -107,6 +110,7 @@ const hud = new HUD();
 const sound = new Sound();
 const gauges = new Gauges();
 const critters = new Critters(scene, sound);
+const bums = new Bums(scene, sound);
 
 // Audio unlocks on the first gesture (browser autoplay policy)
 window.addEventListener('pointerdown', () => sound.unlock());
@@ -155,8 +159,7 @@ window.addEventListener('keyup', (e) => {
   if (key) keys[key] = false;
 });
 
-// Touch controls: three switchable schemes (see game/controls.ts), the
-// 🕹/👉/🎮 corner button cycles them.
+// Touch controls: one floating joystick (see game/controls.ts)
 const controls = new TouchControls(canvas, () => inRoom);
 
 // --- Cars: hop in / get out -------------------------------------------------
@@ -283,11 +286,55 @@ carBtn.addEventListener('pointercancel', () => {
 carBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyE' && !e.repeat && !(e.target instanceof HTMLInputElement)) {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.code === 'KeyE' && !e.repeat) {
     if (myCarId !== null) requestCar(false);
     else if (nearCarWithSeat()) requestCar(true);
   }
+  if (e.code === 'Space' || e.code === 'KeyF') {
+    e.preventDefault();
+    if (!e.repeat) swingStick();
+  }
 });
+
+// --- The whacking stick -----------------------------------------------------
+// Every drunk carries one. The 🏏 button (left thumb) / SPACE swings it;
+// the swing counter rides the regular pos messages, and the host lands
+// the hit on whichever bum is in reach.
+
+const hitBtn = document.getElementById('hit-btn') as HTMLButtonElement;
+
+let swingCount = 0; // synced counter (currentPose sends it)
+let swingT = SWING_SECONDS; // animation clock, done when >= SWING_SECONDS
+
+function swingStick() {
+  if (!inRoom || myCarId !== null || latestState?.phase !== 'play') return;
+  if (swingT < SWING_SECONDS * 0.7) return; // still mid-swing
+  swingT = 0;
+  swingCount++;
+  sound.playWhoosh();
+}
+
+let hitPressed = false;
+hitBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  hitPressed = true;
+});
+hitBtn.addEventListener('pointerup', (e) => {
+  e.preventDefault();
+  if (!hitPressed) return;
+  hitPressed = false;
+  swingStick();
+});
+hitBtn.addEventListener('pointercancel', () => {
+  hitPressed = false;
+});
+hitBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+
+function updateHitButton() {
+  const show = latestState?.phase === 'play' && myCarId === null;
+  hitBtn.classList.toggle('hidden', !show);
+}
 
 // --- Session state ----------------------------------------------------------
 
@@ -338,7 +385,8 @@ async function createRoom(name: string, mode: SceneMode) {
     sim.removePlayer(id);
     hud.updateLobby(sim.state.players);
   };
-  room.onPos = (id, p, ry, moving, isWorking, tr) => sim.setPos(id, p, ry, moving, isWorking, tr);
+  room.onPos = (id, p, ry, moving, isWorking, tr, sw) =>
+    sim.setPos(id, p, ry, moving, isWorking, tr, sw);
   room.onCar = (id, enter) => sim.requestCar(id, enter);
   host = { room, sim };
   myId = room.myId;
@@ -364,12 +412,19 @@ async function joinRoom(code: string, name: string) {
   };
   setInterval(() => {
     const pose = currentPose();
-    room.sendPos(pose.p, pose.ry, pose.moving, pose.working, pose.tr);
+    room.sendPos(pose.p, pose.ry, pose.moving, pose.working, pose.tr, pose.sw);
   }, SEND_INTERVAL_MS);
   enterRoom(room.colorIndex, name, code, false);
 }
 
-function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean; tr?: number } {
+function currentPose(): {
+  p: Vec3;
+  ry: number;
+  moving: boolean;
+  working: boolean;
+  tr?: number;
+  sw: number;
+} {
   if (myCarId !== null && amDriver) {
     return {
       p: [carCtrl.pos.x, 0, carCtrl.pos.z],
@@ -377,6 +432,7 @@ function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean
       moving: Math.abs(carCtrl.speed) > 0.3,
       working: false,
       tr: carCtrl.towing ? carCtrl.trailerRy : undefined,
+      sw: swingCount,
     };
   }
   // Passengers' reports are ignored by the host (pinned to the car)
@@ -385,6 +441,7 @@ function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean
     ry: local.ry,
     moving: local.moving,
     working,
+    sw: swingCount,
   };
 }
 
@@ -463,7 +520,7 @@ function applyState(state: WorldState, t: number) {
       scene.add(avatar.group);
       remotes.set(p.id, avatar);
     }
-    avatar.setTarget(p.p, p.ry, p.moving);
+    avatar.setTarget(p.p, p.ry, p.moving, p.swing);
     avatar.group.visible = p.car === null; // hidden while driving
   }
   for (const [id, avatar] of remotes) {
@@ -500,6 +557,23 @@ function applyState(state: WorldState, t: number) {
 
   roadObs.sync(state.roadObstacles);
   roadAabbs = roadObs.aabbs(state.roadObstacles);
+
+  bums.sync(state.bums);
+  // Team-wide alarm while bums cling to a vehicle (it can't drive off)
+  if (state.phase === 'play') {
+    const besieged = new Set(
+      state.bums
+        .filter((b) => b.mode === 'bang')
+        .map((b) => state.cars.find((c) => c.id === b.car)?.kind === 'rv' ? 'RV' : 'camper'),
+    );
+    hud.setBumWarn(
+      besieged.size > 0
+        ? `🦨 Bums are climbing into the ${[...besieged].join(' and ')}! Whack them 🏏`
+        : null,
+    );
+  } else {
+    hud.setBumWarn(null);
+  }
 
   const seenCars = new Set<number>();
   for (const c of state.cars) {
@@ -587,16 +661,10 @@ renderer.setAnimationLoop(() => {
     if (latestState) applyState(latestState, t);
     let fwd = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
     let turn = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
-    {
-      const driving = myCarId !== null && amDriver;
-      const heading = driving ? carCtrl.ry : local.ry;
-      const p = driving ? carCtrl.pos : local.pos;
-      const camYaw = Math.atan2(p.x - camera.position.x, p.z - camera.position.z);
-      controls.sample(dt, heading, camYaw, driving);
-      if (controls.active) {
-        fwd = controls.fwd;
-        turn = controls.turn;
-      }
+    controls.sample(dt);
+    if (controls.active) {
+      fwd = controls.fwd;
+      turn = controls.turn;
     }
     // Other cars are round blockers (a towed camper is a second one);
     // uncleared road junk blocks too
@@ -612,6 +680,11 @@ renderer.setAnimationLoop(() => {
       }
     }
     if (myCarId !== null && amDriver) {
+      // Bums hanging off the door: the vehicle is going nowhere until
+      // somebody steps out and whacks them off
+      const besieged =
+        latestState?.bums.some((b) => b.mode === 'bang' && b.car === myCarId) ?? false;
+      if (besieged) fwd = 0;
       const surface = roadSurface(carCtrl.pos.x, carCtrl.pos.z);
       carCtrl.update(dt, fwd, turn, world, circles, roadAabbs, surface);
       myMesh.visible = false;
@@ -636,10 +709,14 @@ renderer.setAnimationLoop(() => {
       myMesh.position.set(local.pos.x, elevation(local.pos.x, local.pos.z), local.pos.z);
       myMesh.rotation.y = local.ry;
       applyWobble(myMesh, t, local.moving);
+      if (swingT < SWING_SECONDS) {
+        swingT += dt;
+        applySwing(myMesh, Math.min(1, swingT / SWING_SECONDS));
+      }
     }
     if (host) {
       const pose = currentPose();
-      host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working, pose.tr);
+      host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working, pose.tr, pose.sw);
       host.sim.tick(dt);
     }
 
@@ -682,10 +759,29 @@ renderer.setAnimationLoop(() => {
     {
       const pose = currentPose();
       const inAlley = Math.abs(pose.p[0]) < 8 && pose.p[2] < 30;
-      critters.update(dt, t, pose.p[0], pose.p[2], inAlley);
+      // Every vehicle footprint (cab + towed camper) is a kill circle —
+      // fast wheels flatten whatever fauna wanders under them
+      const killers: KillCircle[] = [];
+      if (latestState) {
+        for (const c of latestState.cars) {
+          const mine = c.id === myCarId && amDriver;
+          const x = mine ? carCtrl.pos.x : c.p[0];
+          const z = mine ? carCtrl.pos.z : c.p[2];
+          const speed = mine ? carCtrl.speed : (cars.get(c.id)?.currentSpeed ?? 0);
+          killers.push({ x, z, r: carRadius(c.kind), speed });
+          if (c.kind === 'caravan') {
+            const ry = mine ? carCtrl.ry : c.ry;
+            const tr = mine && carCtrl.towing ? carCtrl.trailerRy : c.tr;
+            const [tx, tz] = trailerCenterXZ(x, z, ry, tr);
+            killers.push({ x: tx, z: tz, r: TRAILER_RADIUS, speed });
+          }
+        }
+      }
+      critters.update(dt, t, pose.p[0], pose.p[2], inAlley, killers);
     }
 
     updateCarButton();
+    updateHitButton();
     updateClearPanel();
     updateCamera(dt, t);
     // Shadows follow whoever we are; the world is too long for one map
@@ -707,6 +803,7 @@ renderer.setAnimationLoop(() => {
   for (const avatar of remotes.values()) {
     avatar.update(dt, t);
   }
+  bums.update(dt, t);
   for (const [id, car] of cars) {
     if (!(id === myCarId && amDriver)) car.update(dt, t);
   }
@@ -760,14 +857,32 @@ renderer.setAnimationLoop(() => {
     const pose = currentPose();
     return elevation(pose.p[0], pose.p[2]);
   },
-  get controlMode(): string {
-    return controls.mode;
-  },
-  setControlMode(m: string): void {
-    controls.setMode(m as ControlMode);
-  },
   get critters(): number {
     return critters.count;
+  },
+  get roadkill(): number {
+    return critters.kills;
+  },
+  get critterPos(): [number, number][] {
+    return critters.positions;
+  },
+  get bums(): { id: number; kind: string; hp: number; mode: string; pos: [number, number] }[] {
+    return (latestState?.bums ?? []).map((b) => ({
+      id: b.id,
+      kind: b.kind,
+      hp: b.hp,
+      mode: b.mode,
+      pos: [b.p[0], b.p[2]],
+    }));
+  },
+  // Swing the stick (same path as the 🏏 button / SPACE)
+  hit(): void {
+    swingStick();
+  },
+  // Test-only bum spawn, host + ?dev=1 only
+  spawnBum(x: number, z: number): void {
+    if (!new URLSearchParams(location.search).has('dev')) return;
+    host?.sim.spawnBum(x, z);
   },
   get audio(): boolean {
     return sound.enabled;

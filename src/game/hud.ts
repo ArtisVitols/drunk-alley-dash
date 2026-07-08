@@ -114,6 +114,13 @@ export class HUD {
     if (text !== null) label.textContent = text;
   }
 
+  // Banner while bums cling to a vehicle (it can't drive until cleared)
+  setBumWarn(text: string | null) {
+    const warn = $('bum-warn');
+    warn.classList.toggle('hidden', text === null);
+    if (text !== null) warn.textContent = text;
+  }
+
   // Progress panel while the team works on a road obstacle
   setClearPanel(progress: number | null, workers = 0) {
     const panel = $('clear-panel');

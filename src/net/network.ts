@@ -22,6 +22,25 @@ export interface PlayerState {
   working: boolean;
   score: number;
   car: number | null;
+  // Stick-swing counter: increments on every whack so remote clients
+  // can animate swings without a dedicated message
+  swing: number;
+}
+
+export type BumKind = 'man' | 'woman';
+
+// Stinky drifters who want into the team's vehicles. Host-simulated:
+// they shamble toward a vehicle, cling to its door (blocking driving),
+// and flee screaming after enough stick hits.
+export interface BumState {
+  id: number;
+  kind: BumKind;
+  p: Vec3;
+  ry: number;
+  hp: number;
+  mode: 'walk' | 'bang' | 'flee';
+  // Target vehicle id (the one they're trying to board)
+  car: number;
 }
 
 export type RoadObstacleKind = 'log' | 'boulders' | 'roadblock' | 'junk';
@@ -71,11 +90,12 @@ export interface WorldState {
   bottles: BottleState[];
   cars: CarState[];
   roadObstacles: RoadObstacleState[];
+  bums: BumState[];
 }
 
 export type ClientMsg =
   | { t: 'hi'; name: string }
-  | { t: 'pos'; p: Vec3; ry: number; moving: boolean; working: boolean; tr?: number }
+  | { t: 'pos'; p: Vec3; ry: number; moving: boolean; working: boolean; tr?: number; sw?: number }
   | { t: 'car'; enter: boolean };
 
 export type HostMsg =

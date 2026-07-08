@@ -208,6 +208,52 @@ export class Sound {
     }
   }
 
+  // Stick cutting the air (played on every swing, hit or miss)
+  playWhoosh() {
+    if (!this.ctx || !this.master) return;
+    const t0 = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(0.2);
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.Q.value = 1.2;
+    filter.frequency.setValueAtTime(350, t0);
+    filter.frequency.exponentialRampToValueAtTime(1600, t0 + 0.1);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.14, t0 + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+    src.connect(filter).connect(gain).connect(this.master);
+    src.start(t0);
+    src.stop(t0 + 0.2);
+  }
+
+  // Stick connects: a thud and a low grunted "oof"
+  playBumHit() {
+    this.thump(0.3, 900, 0.1);
+    this.blip('sawtooth', [[0, 160], [0.14, 70]], 0.16, 0.18, 0.02);
+  }
+
+  // Fists on the RV door
+  playBang() {
+    this.thump(0.22, 600, 0.08);
+    this.thump(0.18, 500, 0.08, 0.14);
+  }
+
+  // Beaten bum bolting: a warbling two-note shriek, women higher
+  playScream(kind: 'man' | 'woman') {
+    const base = kind === 'woman' ? 940 : 590;
+    this.blip('sawtooth', [[0, base], [0.1, base * 1.3], [0.5, base * 0.45]], 0.14, 0.55);
+    this.blip('square', [[0, base * 1.5], [0.12, base * 1.9], [0.4, base * 0.6]], 0.06, 0.45, 0.08);
+    this.thump(0.06, 3200, 0.3, 0.05);
+  }
+
+  // Something small went under the wheels
+  playSquash() {
+    this.blip('sine', [[0, 1900], [0.09, 350]], 0.12, 0.13);
+    this.thump(0.24, 420, 0.14);
+  }
+
   playAnimal(kind: AnimalKind) {
     if (kind === 'cat') {
       this.blip('sine', [[0, 480], [0.12, 700], [0.32, 380]], 0.09, 0.36);

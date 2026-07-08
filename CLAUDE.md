@@ -67,13 +67,25 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   files); context unlocks on first gesture. Engine loop follows the smoothed
   RPM from `src/game/gauges.ts` (canvas dials, shown while aboard). Ambient
   critters (`src/game/critters.ts`) are client-side only — never synced.
-- **Touch controls** (`src/game/controls.ts`): three schemes cycled by the
-  corner `#ctl-btn` and persisted in localStorage — `stick` (floating
-  joystick), `point` (camera-relative "go where you point", needs
-  heading/camYaw each frame), `dual` (left half = throttle, right half =
-  steer). All share deadzone + expo + smoothing + a base that follows the
-  thumb past the rim. Touch overrides keyboard while `controls.active`;
-  `__dad.controlMode`/`setControlMode` for tests.
+- **Touch controls** (`src/game/controls.ts`): one floating joystick (drag
+  anywhere: up walks, sideways turns) with deadzone + expo + smoothing + a
+  base that follows the thumb past the rim. Touch overrides keyboard while
+  `controls.active`.
+- **Bums** (`src/net/network.ts` `BumState`, host AI in `host.ts`, meshes in
+  `src/game/bums.ts`): host-simulated stinky men/women spawn in waves
+  (first ~14 s in, then every ~40-65 s, max 4), shamble to the nearest
+  point of a vehicle (cab or camper) and cling banging on the door — a
+  clung-to vehicle can't accelerate (driver's client zeroes throttle).
+  Three stick hits → `mode: 'flee'`, they sprint off screaming and despawn.
+  Whacking: the 🏏 `#hit-btn` (bottom-left, on-foot only) or SPACE/F swings
+  the stick every drunk carries; a `swing` counter in PlayerState/'pos'
+  (`sw`) carries the action — the host lands the hit on the nearest bum
+  within 2.6 m, remotes replay the animation on counter change.
+  `__dad.bums/hit()/spawnBum(x,z)` (latter ?dev=1 + host only) for tests.
+- **Roadkill** (`critters.ts`): critters stay client-side, but any vehicle
+  footprint (cab or towed camper, from `WorldState.cars` + the local
+  `CarController`) moving >2.5 m/s squashes them flat; they lie pancaked
+  for a few seconds. `__dad.roadkill` counts local kills.
 - `main.ts` is the glue: input (WASD + touch schemes + context button),
   state→scene application, camera, HUD wiring (`src/game/hud.ts` ↔ `index.html`).
 

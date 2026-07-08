@@ -4,7 +4,8 @@ import type { AnimalKind, Sound } from './sound';
 
 // Ambient wildlife: strays darting across wherever the local player
 // happens to be. Pure client-side flavor — every player sees their own
-// critters, nothing is synced and nothing collides.
+// critters, nothing is synced and nothing collides… except the wheels:
+// any vehicle moving fast enough flattens them where they stand.
 
 const std = (color: number) => new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
 
@@ -17,7 +18,18 @@ interface Critter {
   legs: THREE.Object3D[];
   tail: THREE.Object3D | null;
   hops: boolean;
+  dead: boolean;
 }
+
+// A vehicle footprint that can squash critters (cab or towed camper)
+export interface KillCircle {
+  x: number;
+  z: number;
+  r: number;
+  speed: number;
+}
+
+const KILL_SPEED = 2.5; // slower than this just shoos them
 
 function buildCritter(kind: AnimalKind): {
   group: THREE.Group;
@@ -185,11 +197,37 @@ export class Critters {
       legs,
       tail,
       hops: kind === 'squirrel' || kind === 'rat',
+      dead: false,
     });
     if (Math.random() < 0.65) this.sound.playAnimal(kind);
   }
 
-  update(dt: number, t: number, px: number, pz: number, inAlley: boolean) {
+  // Flatten a critter under the wheels: pancake pose, legs splayed,
+  // left lying on the road for a few seconds before despawning.
+  private squash(critter: Critter) {
+    critter.dead = true;
+    this.kills++;
+    critter.vel.set(0, 0, 0);
+    critter.life = 5;
+    const g = critter.group;
+    g.scale.y = 0.22;
+    g.position.y = elevation(g.position.x, g.position.z);
+    critter.legs.forEach((leg, i) => {
+      leg.rotation.x = 0;
+      leg.rotation.z = (i % 2 === 0 ? 1 : -1) * 1.35;
+    });
+    if (critter.tail) critter.tail.rotation.z = 0.8;
+    this.sound.playSquash();
+  }
+
+  update(
+    dt: number,
+    t: number,
+    px: number,
+    pz: number,
+    inAlley: boolean,
+    killers: KillCircle[] = [],
+  ) {
     this.timer -= dt;
     if (this.timer <= 0 && this.active.length < 4) {
       this.spawn(px, pz);
@@ -204,6 +242,7 @@ export class Critters {
         return false;
       }
       const g = critter.group;
+      if (critter.dead) return true; // roadkill just lies there
       g.position.addScaledVector(critter.vel, dt);
       const bounce = critter.hops ? Math.abs(Math.sin((t + critter.phase) * 9)) * 0.12 : 0;
       g.position.y = elevation(g.position.x, g.position.z) + bounce;
@@ -212,11 +251,30 @@ export class Critters {
         leg.rotation.x = swing * 0.7 * (i % 2 === 0 ? 1 : -1);
       });
       if (critter.tail) critter.tail.rotation.z = Math.sin((t + critter.phase) * 6) * 0.25;
+      for (const c of killers) {
+        if (Math.abs(c.speed) < KILL_SPEED) continue;
+        const dx = g.position.x - c.x;
+        const dz = g.position.z - c.z;
+        const min = c.r + 0.35;
+        if (dx * dx + dz * dz < min * min) {
+          this.squash(critter);
+          break;
+        }
+      }
       return true;
     });
   }
 
+  kills = 0;
+
   get count(): number {
     return this.active.length;
+  }
+
+  // Live (not yet squashed) critter positions — for the test handle
+  get positions(): [number, number][] {
+    return this.active
+      .filter((c) => !c.dead)
+      .map((c) => [c.group.position.x, c.group.position.z]);
   }
 }
