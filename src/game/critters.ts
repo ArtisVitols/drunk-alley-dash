@@ -59,6 +59,34 @@ function buildCritter(kind: AnimalKind): {
   head.position.set(0, spec.legLen + 0.16 * s, 0.24 * s);
   group.add(head);
 
+  // A face: beady eyes and a nose tip for every kind
+  const eyeMat = std(0x141416);
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018 * s, 5, 4), eyeMat);
+    eye.position.set(0.045 * s * side, spec.legLen + 0.19 * s, 0.32 * s);
+    group.add(eye);
+  }
+  const noseTip = new THREE.Mesh(
+    new THREE.SphereGeometry(0.022 * s, 5, 4),
+    std(kind === 'cat' ? 0xc47a86 : 0x1a1a1e),
+  );
+  noseTip.position.set(
+    0,
+    spec.legLen + (kind === 'dog' ? 0.14 : 0.15) * s,
+    (kind === 'dog' ? 0.41 : 0.335) * s,
+  );
+  group.add(noseTip);
+  if (kind === 'dog') {
+    // A faded red collar — somebody's lost boy
+    const collar = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.075 * s, 0.075 * s, 0.03 * s, 8),
+      new THREE.MeshStandardMaterial({ color: 0x8a3030, roughness: 0.6 }),
+    );
+    collar.rotation.x = Math.PI / 2 - 0.5;
+    collar.position.set(0, spec.legLen + 0.13 * s, 0.18 * s);
+    group.add(collar);
+  }
+
   // ears
   for (const side of [-1, 1]) {
     const ear = new THREE.Mesh(
@@ -118,6 +146,12 @@ function buildCritter(kind: AnimalKind): {
     );
     thin.position.set(0, spec.legLen + (kind === 'cat' ? 0.2 : 0.1) * s, -0.26 * s);
     thin.rotation.x = kind === 'cat' ? -0.9 : 1.1; // cat: tail up
+    if (kind === 'cat') {
+      // white tail tip
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(0.018 * s, 5, 4), std(0xd8d4c8));
+      tip.position.y = 0.16 * s;
+      thin.add(tip);
+    }
     tail = thin;
   }
   if (tail) group.add(tail);
@@ -217,6 +251,16 @@ export class Critters {
       leg.rotation.z = (i % 2 === 0 ? 1 : -1) * 1.35;
     });
     if (critter.tail) critter.tail.rotation.z = 0.8;
+    // Dark stain spreading under the poor thing
+    const stain = new THREE.Mesh(
+      new THREE.CircleGeometry(0.4, 10),
+      new THREE.MeshBasicMaterial({ color: 0x1c1216, transparent: true, opacity: 0.55 }),
+    );
+    stain.rotation.x = -Math.PI / 2;
+    // Flat in XZ, so the parent's Y-squash only lowers it; keep it
+    // high enough locally to clear the road surface
+    stain.position.y = 0.06;
+    g.add(stain);
     this.sound.playSquash();
   }
 

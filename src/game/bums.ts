@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { BumKind, BumState } from '../net/network';
+import { glowTexture } from './fx';
 import { elevation } from './road';
 import type { Sound } from './sound';
 
@@ -17,7 +18,9 @@ interface BumRig {
   armR: THREE.Group;
   head: THREE.Group;
   body: THREE.Group;
-  stink: THREE.Mesh[];
+  // Loose cloth (rag flap, skirt) swung with the walk in update()
+  cloth: THREE.Mesh[];
+  stink: THREE.Sprite[];
   phase: number;
 }
 
@@ -48,19 +51,38 @@ function buildBum(kind: BumKind): { group: THREE.Group; rig: BumRig } {
   const legR = makeLeg(1);
 
   // Ragged coat torso; women get a long tattered skirt over the legs
+  const cloth: THREE.Mesh[] = [];
   const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.75, 9), coat);
   torso.position.y = 1.2;
   body.add(torso);
+  // Blotchy dirt smears on the coat
+  const dirt = std(0x2e2a20, 0.98);
+  for (let i = 0; i < 4; i++) {
+    const smear = new THREE.Mesh(new THREE.SphereGeometry(0.09, 6, 5), dirt);
+    const a = Math.random() * Math.PI * 2;
+    smear.position.set(Math.sin(a) * 0.27, 0.95 + Math.random() * 0.5, Math.cos(a) * 0.27);
+    smear.scale.set(1, 1.4, 0.3);
+    smear.lookAt(smear.position.x * 2, smear.position.y, smear.position.z * 2);
+    body.add(smear);
+  }
   if (woman) {
     const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 0.6, 9), rags);
     skirt.position.y = 0.62;
     body.add(skirt);
+    cloth.push(skirt);
   }
   // Loose rag flaps
   const flap = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.2, 0.06), rags);
   flap.position.set(0, 0.92, 0.16);
   flap.rotation.x = 0.3;
   body.add(flap);
+  cloth.push(flap);
+  // A second tattered tail flapping behind
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.32, 0.05), rags);
+  tail.position.set(0.05, 0.85, -0.2);
+  tail.rotation.x = -0.25;
+  body.add(tail);
+  cloth.push(tail);
 
   const makeArm = (side: 1 | -1) => {
     const arm = new THREE.Group();
@@ -68,6 +90,10 @@ function buildBum(kind: BumKind): { group: THREE.Group; rig: BumRig } {
     const limb = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.62, 7), coat);
     limb.position.y = -0.31;
     arm.add(limb);
+    // Fingerless glove band above the bare hand
+    const glove = new THREE.Mesh(new THREE.CylinderGeometry(0.062, 0.062, 0.1, 7), dirt);
+    glove.position.y = -0.56;
+    arm.add(glove);
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), skin);
     hand.position.y = -0.64;
     arm.add(hand);
@@ -78,6 +104,25 @@ function buildBum(kind: BumKind): { group: THREE.Group; rig: BumRig } {
   };
   const armL = makeArm(-1);
   const armR = makeArm(1);
+  // Props: she hauls a stuffed shopping bag, he dangles a bottle on a
+  // string — both hang off the left hand
+  if (woman) {
+    const bag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.26, 0.3, 0.16),
+      std(0x7a8ba0, 0.9),
+    );
+    bag.position.set(0, -0.82, 0);
+    armL.add(bag);
+  } else {
+    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.2, 4), dirt);
+    string.position.set(0, -0.74, 0);
+    const bottle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.045, 0.2, 7),
+      std(0x3a5a2a, 0.4),
+    );
+    bottle.position.set(0, -0.9, 0);
+    armL.add(string, bottle);
+  }
 
   const head = new THREE.Group();
   head.position.y = 1.72;
@@ -118,28 +163,32 @@ function buildBum(kind: BumKind): { group: THREE.Group; rig: BumRig } {
   }
   body.add(head);
 
-  // The stink itself: wobbly green puffs rising off them
-  const stinkMat = new THREE.MeshBasicMaterial({
-    color: 0x9dc44d,
-    transparent: true,
-    opacity: 0.4,
-    depthWrite: false,
-  });
-  const stink: THREE.Mesh[] = [];
+  // The stink itself: hazy sickly-green glow puffs rising off them —
+  // additive sprites read as vapor and feed the bloom at night
+  const stink: THREE.Sprite[] = [];
   for (let i = 0; i < 3; i++) {
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.09 + i * 0.02, 6, 5), stinkMat);
+    const puff = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: glowTexture(),
+        color: 0x86b83c,
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
     stink.push(puff);
     group.add(puff);
   }
 
   group.add(body);
   group.traverse((o) => {
-    if (o instanceof THREE.Mesh && o.material !== stinkMat) o.castShadow = true;
+    if (o instanceof THREE.Mesh) o.castShadow = true;
   });
 
   return {
     group,
-    rig: { legL, legR, armL, armR, head, body, stink, phase: Math.random() * 10 },
+    rig: { legL, legR, armL, armR, head, body, cloth, stink, phase: Math.random() * 10 },
   };
 }
 
@@ -248,6 +297,18 @@ export class Bums {
         }
       }
 
+      // Loose cloth swings with the gait (walk) or the panic (flee)
+      const clothSwing =
+        bum.mode === 'bang'
+          ? Math.sin(t * 11 + p) * 0.12
+          : Math.sin(t * (bum.mode === 'flee' ? 16 : 7) + p) *
+            (bum.mode === 'flee' ? 0.45 : 0.22);
+      for (let i = 0; i < r.cloth.length; i++) {
+        const base = i === 0 && bum.kind === 'woman' ? 0 : i === r.cloth.length - 1 ? -0.25 : 0.3;
+        r.cloth[i].rotation.x = base + clothSwing * (i % 2 === 0 ? 1 : -0.7);
+        r.cloth[i].rotation.z = clothSwing * 0.4;
+      }
+
       // Stink puffs spiral up and fade on repeat
       for (let i = 0; i < r.stink.length; i++) {
         const cycle = (t * 0.6 + p + i * 0.33) % 1;
@@ -257,7 +318,8 @@ export class Bums {
           1.95 + cycle * 0.85,
           Math.cos((t + i * 1.7 + p) * 2.6) * 0.18,
         );
-        puff.scale.setScalar(0.7 + cycle * 0.9);
+        puff.scale.setScalar(0.45 + cycle * 0.55);
+        puff.material.opacity = 0.42 * (1 - cycle * 0.8);
       }
     }
   }

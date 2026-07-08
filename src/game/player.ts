@@ -65,6 +65,9 @@ function capsule(
 export function createPlayerMesh(colorIndex: number, name: string): THREE.Group {
   const color = PLAYER_COLORS[colorIndex % PLAYER_COLORS.length];
   const jacket = std(color, 0.8);
+  // Faint self-glow lifts silhouettes off the dark ground at night;
+  // invisible in daylight under ACES
+  jacket.emissive = new THREE.Color(color).multiplyScalar(0.06);
   const beanieColor = new THREE.Color(color).multiplyScalar(0.45).getHex();
   const beanieMat = std(beanieColor, 0.9);
   const pants = std(0x33353f, 0.9);
@@ -86,6 +89,10 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
     const knee = new THREE.Group();
     knee.position.y = -0.42;
     knee.add(capsule(pants, 0.085, 0.24, -0.19));
+    // Rolled boot cuff above the shoe
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.105, 0.08, 8), shoe);
+    cuff.position.y = -0.31;
+    knee.add(cuff);
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.09, 0.3), shoe);
     foot.position.set(0, -0.37, 0.06);
     knee.add(foot);
@@ -105,6 +112,30 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
   belly.position.set(0, 1.1, 0.13);
   belly.scale.set(1.05, 0.85, 0.7);
   rig.add(belly);
+  // Open-jacket zipper strips framing the belly
+  const zipMat = std(new THREE.Color(color).multiplyScalar(0.55).getHex(), 0.85);
+  for (const side of [-1, 1] as const) {
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.36, 0.03), zipMat);
+    strip.position.set(0.14 * side, 1.16, 0.24);
+    strip.rotation.z = -0.18 * side;
+    rig.add(strip);
+  }
+  // Two straining buttons
+  for (const by of [1.02, 1.16]) {
+    const button = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.012, 8), dark);
+    button.rotation.x = Math.PI / 2;
+    button.position.set(0, by, 0.29);
+    rig.add(button);
+  }
+  // Team-colored scarf wrapped under the chin, tail down the chest
+  const scarfMat = std(new THREE.Color(color).offsetHSL(0.06, 0.05, -0.08).getHex(), 0.95);
+  const scarfRing = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.06, 8, 14), scarfMat);
+  scarfRing.rotation.x = Math.PI / 2;
+  scarfRing.position.y = 1.52;
+  const scarfTail = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.3, 0.04), scarfMat);
+  scarfTail.position.set(0.08, 1.36, 0.21);
+  scarfTail.rotation.z = 0.15;
+  rig.add(scarfRing, scarfTail);
 
   // --- arms -----------------------------------------------------------
   const makeArm = (side: 1 | -1) => {
@@ -115,6 +146,14 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
     const elbow = new THREE.Group();
     elbow.position.y = -0.32;
     elbow.add(capsule(jacket, 0.07, 0.16, -0.14));
+    // Worn elbow patch
+    const patch = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 8, 6),
+      std(new THREE.Color(color).multiplyScalar(0.5).getHex(), 0.95),
+    );
+    patch.position.set(0, -0.02, -0.045);
+    patch.scale.set(0.9, 1.1, 0.6);
+    elbow.add(patch);
     const hand = new THREE.Mesh(new THREE.SphereGeometry(0.075, 10, 8), skin);
     hand.position.y = -0.3;
     elbow.add(hand);
@@ -163,9 +202,13 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
     const brow = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.02, 0.02), dark);
     brow.position.set(0.1 * side, 0.375, 0.21);
     brow.rotation.z = 0.4 * side;
+    // Heavy half-shut eyelid drooping over each eye
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.035, 0.035), skin);
+    lid.position.set(0.095 * side, 0.335, 0.2);
+    lid.rotation.z = 0.18 * side;
     const ear = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skin);
     ear.position.set(0.225 * side, 0.26, 0);
-    head.add(eye, pupil, brow, ear);
+    head.add(eye, pupil, brow, lid, ear);
   }
   const nose = new THREE.Mesh(
     new THREE.SphereGeometry(0.075, 8, 8),
@@ -173,6 +216,14 @@ export function createPlayerMesh(colorIndex: number, name: string): THREE.Group 
   );
   nose.position.set(0, 0.23, 0.225);
   head.add(nose);
+  // Days-old stubble: a darker jaw band hugging the lower skull
+  const stubble = new THREE.Mesh(
+    new THREE.SphereGeometry(0.245, 12, 8, 0, Math.PI * 2, Math.PI * 0.52, Math.PI * 0.3),
+    std(0x9a7a5c, 0.95),
+  );
+  stubble.position.y = 0.26;
+  stubble.scale.set(0.955, 1.055, 0.955);
+  head.add(stubble);
   const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.018, 0.02), dark);
   mouth.position.set(0.025, 0.13, 0.205);
   mouth.rotation.z = 0.25; // crooked grin
