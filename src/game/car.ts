@@ -353,6 +353,7 @@ export class CarController {
   pos = new THREE.Vector3();
   ry = 0;
   speed = 0;
+  crashIntensity = 0; // set on a hard hit; consumer resets after use
   private stats = CAR_STATS.sedan;
   private swayClock = Math.random() * 10;
 
@@ -394,6 +395,7 @@ export class CarController {
     const hitWorld = collideCircle(this.pos, s.radius, world, extraObstacles);
     const hitCars = collideCircles(this.pos, s.radius, circles);
     if (hitWorld || hitCars) {
+      if (Math.abs(this.speed) > 2.5) this.crashIntensity = Math.abs(this.speed);
       this.speed *= Math.pow(0.02, dt); // crunch — bleed speed fast
     }
   }
@@ -409,6 +411,10 @@ export class RemoteCar {
 
   constructor(kind: CarKind) {
     this.group = createCarMesh(kind);
+  }
+
+  get currentSpeed(): number {
+    return this.speed;
   }
 
   setTarget(p: Vec3, ry: number) {

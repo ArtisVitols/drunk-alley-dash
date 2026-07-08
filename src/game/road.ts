@@ -118,6 +118,10 @@ export function distanceToRoad(x: number, z: number): number {
   return nearestSample(x, z).d;
 }
 
+export function nearestRoadT(x: number, z: number): number {
+  return nearestSample(x, z).t;
+}
+
 export type Surface = 'city' | 'asphalt' | 'sand' | 'grass';
 
 export function roadSurface(x: number, z: number): Surface {

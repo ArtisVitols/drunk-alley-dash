@@ -54,6 +54,10 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
 - **Rendering**: ACES + UnrealBloom + soft shadows, but `lofi` mode
   (auto-detected SwiftShader/llvmpipe, or `?fx=lo|hi`) disables bloom/shadows/rain.
   Merge static decor geometry (`mergeGeometries`) — SwiftShader dies by draw count.
+- **Audio** (`src/game/sound.ts`): everything synthesized with WebAudio (no
+  files); context unlocks on first gesture. Engine loop follows the smoothed
+  RPM from `src/game/gauges.ts` (canvas dials, shown while aboard). Ambient
+  critters (`src/game/critters.ts`) are client-side only — never synced.
 - `main.ts` is the glue: input (WASD + floating touch joystick + context button),
   state→scene application, camera, HUD wiring (`src/game/hud.ts` ↔ `index.html`).
 

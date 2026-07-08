@@ -33,6 +33,13 @@ waving their bottles. If the driver bails, the next passenger inherits the
 wheel. Only the driver and walkers collect bottles — driving grabs them in a
 wider radius, but most bottles hide in the alley on foot.
 
+**Dashboard & atmosphere:** aboard the RV you get a working speedometer and
+tachometer; a fully synthesized soundscape (WebAudio, no audio files) covers
+the engine, pickups, crashes, doors, clearing knocks, a ROUTE 65 fanfare,
+drunken hiccups, birds by day and crickets by night — mute with the 🔊
+button. Stray cats, dogs, squirrels and raccoons dart across the streets and
+the country road, and the alley has its rats.
+
 **The road to ROUTE 65 (co-op):** the city's north gate opens onto a winding
 country road that **climbs and dips over rolling hills** — asphalt at first,
 then a sandy track through green fields. A dense **wall of pines** hems the

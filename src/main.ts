@@ -24,8 +24,11 @@ import {
   slopePitch,
   syncCarPassengers,
 } from './game/car';
+import { Critters } from './game/critters';
+import { Gauges } from './game/gauges';
 import { RoadObstacles } from './game/obstacles';
 import { FINISH, GATE_Z, elevation, roadSurface, sampleRoad } from './game/road';
+import { Sound } from './game/sound';
 import { BOTTLE_POINTS } from './net/network';
 import { HostSim } from './game/host';
 import { HUD } from './game/hud';
@@ -97,6 +100,19 @@ const pickupFX = new PickupFX(scene);
 const roadObs = new RoadObstacles(scene);
 let roadAabbs: Obstacle[] = [];
 const hud = new HUD();
+const sound = new Sound();
+const gauges = new Gauges();
+const critters = new Critters(scene, sound);
+
+// Audio unlocks on the first gesture (browser autoplay policy)
+window.addEventListener('pointerdown', () => sound.unlock());
+window.addEventListener('keydown', () => sound.unlock());
+const muteBtn = document.getElementById('mute-btn') as HTMLButtonElement;
+muteBtn.addEventListener('click', () => {
+  sound.unlock();
+  sound.setMuted(!sound.muted);
+  muteBtn.textContent = sound.muted ? '🔇' : '🔊';
+});
 
 function setMode(mode: SceneMode) {
   if (world.mode === mode) return;
@@ -327,6 +343,14 @@ const remotes = new Map<string, RemoteAvatar>();
 const bottles = new Map<number, { mesh: THREE.Group; kind: BottleKind }>();
 const cars = new Map<number, RemoteCar>();
 
+// Sound bookkeeping
+let prevScore = 0;
+let prevCleared = 0;
+let lastKnock = 0;
+let lastCrash = 0;
+let hiccupIn = 12;
+let ambientIn = 6;
+
 function enterRoom(colorIndex: number, name: string, code: string, isHost: boolean) {
   myMesh = createPlayerMesh(colorIndex, name);
   scene.add(myMesh);
@@ -439,6 +463,7 @@ function applyState(state: WorldState, t: number) {
   const myCarState = myCar !== null ? state.cars.find((c) => c.id === myCar) : undefined;
   const nowDriver = !!myCarState && myCarState.occupants[0] === myId;
   if (myCar !== myCarId || nowDriver !== amDriver) {
+    if (myCar !== myCarId) sound.playDoor();
     if (nowDriver && myCarState) {
       carCtrl.reset(myCarState.p, myCarState.ry, myCarState.kind);
     } else if (myCar === null && me) {
@@ -449,6 +474,15 @@ function applyState(state: WorldState, t: number) {
     myCarId = myCar;
     amDriver = nowDriver;
   }
+
+  // Score/clear jingles (sound state watches the world state)
+  if (me) {
+    if (me.score > prevScore) sound.playPickup(me.score - prevScore);
+    prevScore = me.score;
+  }
+  const clearedNow = state.roadObstacles.filter((ob) => ob.cleared).length;
+  if (clearedNow > prevCleared && state.phase === 'play') sound.playClearDone();
+  prevCleared = clearedNow;
 
   const seenPlayers = new Set<string>();
   for (const p of state.players) {
@@ -537,6 +571,7 @@ function onPhaseChange(state: WorldState) {
     hud.showPlaying();
   } else if (state.phase === 'won') {
     hud.showWon(state.players);
+    sound.playWin();
   }
 }
 
@@ -625,6 +660,49 @@ renderer.setAnimationLoop(() => {
       host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working);
       host.sim.tick(dt);
     }
+
+    // ——— Dashboard + soundscape + wildlife —————————————————————
+    const aboard = myCarId !== null;
+    const mySpeed = amDriver
+      ? carCtrl.speed
+      : aboard
+        ? (cars.get(myCarId!)?.currentSpeed ?? 0)
+        : 0;
+    const throttle = amDriver ? Math.abs(fwd) : Math.min(1, Math.abs(mySpeed) / 11.5);
+    gauges.update(dt, aboard, mySpeed, throttle);
+    if (sound.enabled) {
+      if (aboard && !sound.engineRunning) sound.startEngine();
+      if (!aboard && sound.engineRunning) sound.stopEngine();
+      if (aboard) sound.setEngine(gauges.rpm, throttle);
+      if (amDriver && carCtrl.crashIntensity > 0) {
+        if (t - lastCrash > 0.5) {
+          sound.playCrash(carCtrl.crashIntensity);
+          lastCrash = t;
+        }
+        carCtrl.crashIntensity = 0;
+      }
+      if (working && t - lastKnock > 0.5) {
+        sound.workTick();
+        lastKnock = t;
+      }
+      hiccupIn -= dt;
+      if (hiccupIn <= 0) {
+        if (!aboard) sound.playHiccup();
+        hiccupIn = 9 + Math.random() * 16;
+      }
+      ambientIn -= dt;
+      if (ambientIn <= 0) {
+        if (world.mode === 'night') sound.playCricket();
+        else sound.playBird();
+        ambientIn = 6 + Math.random() * 10;
+      }
+    }
+    {
+      const pose = currentPose();
+      const inAlley = Math.abs(pose.p[0]) < 8 && pose.p[2] < 30;
+      critters.update(dt, t, pose.p[0], pose.p[2], inAlley);
+    }
+
     updateCarButton();
     updateClearPanel();
     updateCamera(dt, t);
@@ -696,6 +774,15 @@ renderer.setAnimationLoop(() => {
   get alt(): number {
     const pose = currentPose();
     return elevation(pose.p[0], pose.p[2]);
+  },
+  get critters(): number {
+    return critters.count;
+  },
+  get audio(): boolean {
+    return sound.enabled;
+  },
+  get engine(): boolean {
+    return sound.engineRunning;
   },
   get phase(): string {
     return latestState?.phase ?? 'lobby';

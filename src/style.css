@@ -341,6 +341,56 @@ button:disabled {
   white-space: nowrap;
 }
 
+#gauges {
+  position: absolute;
+  left: 18px;
+  bottom: max(52px, calc(env(safe-area-inset-bottom) + 44px));
+  display: flex;
+  gap: 10px;
+}
+
+#gauges canvas {
+  width: 116px;
+  height: 116px;
+}
+
+#mute-btn {
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 18px;
+  background: rgba(12, 12, 20, 0.7);
+  color: #ffd9ad;
+  border: 1px solid rgba(255, 176, 102, 0.5);
+}
+
+@media (max-width: 600px) {
+  #gauges canvas {
+    width: 84px;
+    height: 84px;
+  }
+
+  #gauges {
+    left: 10px;
+  }
+
+  #route-label {
+    top: 64px;
+    bottom: auto;
+    left: auto;
+    right: 12px;
+    font-size: 12px;
+  }
+}
+
 #car-btn {
   pointer-events: auto;
   touch-action: none;
