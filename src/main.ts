@@ -647,7 +647,10 @@ function updateCamera(dt: number, t: number) {
 // --- Main loop -----------------------------------------------------------------
 
 let last = performance.now();
+let frameDrawCalls = 0; // sampled at end of frame for the test handle
+renderer.info.autoReset = false; // composer sub-passes would reset mid-frame
 renderer.setAnimationLoop(() => {
+  renderer.info.reset();
   const now = performance.now();
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
@@ -812,6 +815,7 @@ renderer.setAnimationLoop(() => {
 
   if (lofi) renderer.render(scene, camera);
   else composer.render();
+  frameDrawCalls = renderer.info.render.calls;
 });
 
 // Read-only debug handle for end-to-end tests
@@ -866,7 +870,7 @@ renderer.setAnimationLoop(() => {
     return critters.kills;
   },
   get drawCalls(): number {
-    return renderer.info.render.calls;
+    return frameDrawCalls;
   },
   get critterPos(): [number, number][] {
     return critters.positions;

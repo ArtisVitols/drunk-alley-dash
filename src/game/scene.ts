@@ -14,6 +14,7 @@ import {
 } from './road';
 import {
   asphaltTextures,
+  billboardTexture,
   brickTexture,
   celestialTexture,
   cloudTexture,
@@ -22,7 +23,9 @@ import {
   neonTexture,
   sandTextures,
   signTexture,
+  skylineTexture,
   skyTexture,
+  tuftTexture,
 } from './textures';
 
 export interface Obstacle {
@@ -86,7 +89,7 @@ export function buildScene(
   scene.background = new THREE.Color(night ? 0x07070d : 0x9fb6d8);
   scene.fog = night
     ? new THREE.FogExp2(0x07070d, 0.019)
-    : new THREE.FogExp2(0xa8b8cc, 0.007);
+    : new THREE.FogExp2(0xa8b8cc, 0.0085); // haze layers the distant hills
 
   // ——— Sky: gradient dome + sun/clouds (day) or stars/moon (night) ———
   const SKY_CENTER = new THREE.Vector3(0, 0, 200);
@@ -246,11 +249,13 @@ export function buildScene(
   ground.receiveShadow = true;
   root.add(ground);
 
-  // Rain puddles — catch the neon at night, the sky by day
+  // Rain puddles — mirror-wet at night to catch the neon, drying damp
+  // patches by day. Alley + a few out on the city streets.
   const puddleMat = new THREE.MeshStandardMaterial({
     color: night ? 0x232c40 : 0x8095b3,
-    roughness: night ? 0.12 : 0.08,
-    metalness: 0.55,
+    roughness: night ? 0.1 : 0.2,
+    metalness: night ? 0.65 : 0.45,
+    envMapIntensity: night ? 1.6 : 0.9,
   });
   for (const [x, z, r] of [
     [-3, -12, 1.7],
@@ -258,12 +263,38 @@ export function buildScene(
     [-2, 20, 2.0],
     [5, -22, 1.2],
     [1, -2, 1.5],
+    [-8, 38, 2.2],
+    [12, 75, 1.8],
+    [-14, 96, 1.5],
+    [3, 112, 1.9],
   ]) {
     const puddle = new THREE.Mesh(new THREE.CircleGeometry(r, 24), puddleMat);
     puddle.rotation.x = -Math.PI / 2;
     puddle.position.set(x, 0.012, z);
     puddle.scale.x = 1.5;
     root.add(puddle);
+  }
+
+  // Distant skyline ring just inside the sky dome — flat unlit
+  // silhouette strip (lit windows at night), open toward ROUTE 65 so
+  // the finish horizon stays rural. One draw call.
+  {
+    const skyTex = skylineTexture(night);
+    skyTex.repeat.set(8, 1);
+    const ring = new THREE.Mesh(
+      new THREE.CylinderGeometry(500, 500, 36, 48, 1, true, 0.5, Math.PI * 2 - 1.0),
+      new THREE.MeshBasicMaterial({
+        map: skyTex,
+        transparent: true,
+        opacity: night ? 1 : 0.85,
+        side: THREE.BackSide,
+        fog: false,
+        depthWrite: false,
+      }),
+    );
+    ring.position.y = 14;
+    ring.renderOrder = -8;
+    root.add(ring);
   }
 
   const obstacles: Obstacle[] = [];
@@ -346,6 +377,79 @@ export function buildScene(
     root.add(building);
     obstacles.push({ x: block.x, z: block.z, hx: BLOCK_HALF, hz: BLOCK_HALF });
   });
+
+  // Rooftop clutter + cornices, merged: chimneys/vents in one mesh,
+  // antennas in a second, cornice ledges in a third (3 draw calls for
+  // every roof in town).
+  {
+    const clutterGeos: THREE.BufferGeometry[] = [];
+    const antennaGeos: THREE.BufferGeometry[] = [];
+    const corniceGeos: THREE.BufferGeometry[] = [];
+    // [cx, cz, roofY, half-x, half-z] for the 2 alley fillers + 4 blocks
+    const roofs: [number, number, number, number, number][] = [
+      [-(ALLEY_HALF_WIDTH + fillerW / 2), 0, 12, fillerW / 2, ALLEY_HALF_LENGTH],
+      [ALLEY_HALF_WIDTH + fillerW / 2, 0, 12, fillerW / 2, ALLEY_HALF_LENGTH],
+      ...CITY_BLOCKS.map(
+        (b) => [b.x, b.z, b.h, BLOCK_HALF, BLOCK_HALF] as [number, number, number, number, number],
+      ),
+    ];
+    for (const [cx, cz, roofY, hx, hz] of roofs) {
+      // chimneys
+      const chimneys = 2 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < chimneys; i++) {
+        const x = cx + (Math.random() - 0.5) * (hx * 2 - 3);
+        const z = cz + (Math.random() - 0.5) * (hz * 2 - 3);
+        const h = 1.2 + Math.random() * 1.0;
+        const body = new THREE.BoxGeometry(0.9, h, 0.9);
+        body.translate(x, roofY + h / 2, z);
+        const cap = new THREE.BoxGeometry(1.1, 0.18, 1.1);
+        cap.translate(x, roofY + h + 0.09, z);
+        clutterGeos.push(body, cap);
+      }
+      // vent pipes
+      for (let i = 0; i < 3; i++) {
+        const x = cx + (Math.random() - 0.5) * (hx * 2 - 2);
+        const z = cz + (Math.random() - 0.5) * (hz * 2 - 2);
+        const pipe = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 6);
+        pipe.translate(x, roofY + 0.45, z);
+        clutterGeos.push(pipe);
+      }
+      // one TV antenna
+      {
+        const x = cx + (Math.random() - 0.5) * (hx * 2 - 4);
+        const z = cz + (Math.random() - 0.5) * (hz * 2 - 4);
+        const mast = new THREE.CylinderGeometry(0.035, 0.035, 2.6, 5);
+        mast.translate(x, roofY + 1.3, z);
+        antennaGeos.push(mast);
+        for (const [ay, aw] of [
+          [2.3, 1.4],
+          [1.9, 1.0],
+        ] as const) {
+          const arm = new THREE.BoxGeometry(aw, 0.035, 0.035);
+          arm.translate(x, roofY + ay, z);
+          antennaGeos.push(arm);
+        }
+      }
+      // cornice ledge ringing the roofline
+      const cornice = new THREE.BoxGeometry(hx * 2 + 0.5, 0.3, hz * 2 + 0.5);
+      cornice.translate(cx, roofY - 0.15, cz);
+      corniceGeos.push(cornice);
+    }
+    const clutterMesh = new THREE.Mesh(
+      mergeGeometries(clutterGeos),
+      new THREE.MeshStandardMaterial({ color: 0x4a4340, roughness: 0.95 }),
+    );
+    clutterMesh.castShadow = true;
+    const antennaMesh = new THREE.Mesh(
+      mergeGeometries(antennaGeos),
+      new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.5, metalness: 0.7 }),
+    );
+    const corniceMesh = new THREE.Mesh(
+      mergeGeometries(corniceGeos),
+      new THREE.MeshStandardMaterial({ color: 0x53504a, roughness: 0.9 }),
+    );
+    root.add(clutterMesh, antennaMesh, corniceMesh);
+  }
 
   // A little white bell tower on one roof — labas, Vilnius
   const towerBlock = CITY_BLOCKS[3];
@@ -505,16 +609,35 @@ export function buildScene(
   const leafGeos: THREE.BufferGeometry[] = [];
   const bushGeos: THREE.BufferGeometry[] = [];
   const rockGeos: THREE.BufferGeometry[] = [];
+  // Three silhouettes fed into the same merged arrays (no extra draws):
+  // classic two-cone pine, tall skinny spruce, squat rounded fir.
   const addPine = (x: number, z: number, s: number) => {
     const y = elevation(x, z);
+    const variant = Math.floor(Math.random() * 3);
     const trunk = new THREE.CylinderGeometry(0.16 * s, 0.24 * s, 1.4 * s, 6);
     trunk.translate(x, y + 0.7 * s, z);
     trunkGeos.push(trunk);
-    const lower = new THREE.ConeGeometry(1.5 * s, 2.6 * s, 7);
-    lower.translate(x, y + 2.4 * s, z);
-    const upper = new THREE.ConeGeometry(1.05 * s, 2.0 * s, 7);
-    upper.translate(x, y + 3.7 * s, z);
-    leafGeos.push(lower, upper);
+    if (variant === 0) {
+      const lower = new THREE.ConeGeometry(1.5 * s, 2.6 * s, 7);
+      lower.translate(x, y + 2.4 * s, z);
+      const upper = new THREE.ConeGeometry(1.05 * s, 2.0 * s, 7);
+      upper.translate(x, y + 3.7 * s, z);
+      leafGeos.push(lower, upper);
+    } else if (variant === 1) {
+      // tall skinny spruce
+      const spire = new THREE.ConeGeometry(1.0 * s, 4.6 * s, 7);
+      spire.translate(x, y + 3.4 * s, z);
+      leafGeos.push(spire);
+    } else {
+      // squat rounded fir (low-poly sphere: icosahedrons are
+      // non-indexed and would break the merged leaf mesh)
+      const blob = new THREE.SphereGeometry(1.35 * s, 6, 5);
+      blob.scale(1, 1.25, 1);
+      blob.translate(x, y + 2.3 * s, z);
+      const tip = new THREE.ConeGeometry(0.8 * s, 1.4 * s, 6);
+      tip.translate(x, y + 3.9 * s, z);
+      leafGeos.push(blob, tip);
+    }
   };
 
   // The forest wall: dense pine belts flanking the road corridor, so
@@ -582,6 +705,108 @@ export function buildScene(
     }
   }
   addMerged(postGeos, new THREE.MeshStandardMaterial({ color: 0x6b5334, roughness: 0.9 }));
+
+  // Wildflower / tall-grass tufts: alpha-tested cross-planes, ALL
+  // merged into one mesh (alphaTest avoids transparency sorting).
+  {
+    const tuftGeos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 120; i++) {
+      const x = -(WORLD_HALF_WIDTH - 3) + Math.random() * (WORLD_HALF_WIDTH - 3) * 2;
+      const z = GATE_Z + 5 + Math.random() * (WORLD_MAX_Z - GATE_Z - 12);
+      const d = distanceToRoad(x, z);
+      if (d < ROAD_HALF_WIDTH + 0.8 || d > ROAD_HALF_WIDTH + 14) continue; // hug the roadside
+      const s = 0.7 + Math.random() * 0.8;
+      const y = elevation(x, z);
+      const ry = Math.random() * Math.PI;
+      for (const a of [0, Math.PI / 2]) {
+        const card = new THREE.PlaneGeometry(1.1 * s, 0.9 * s);
+        card.rotateY(ry + a);
+        card.translate(x, y + 0.42 * s, z);
+        tuftGeos.push(card);
+      }
+    }
+    if (tuftGeos.length) {
+      const tufts = new THREE.Mesh(
+        mergeGeometries(tuftGeos),
+        new THREE.MeshStandardMaterial({
+          map: tuftTexture(),
+          alphaTest: 0.4,
+          side: THREE.DoubleSide,
+          roughness: 0.95,
+        }),
+      );
+      root.add(tufts);
+    }
+  }
+
+  // Roadside landmarks near the start of the country road: a rusty
+  // bus-stop shelter and two weathered Lithuanian billboards.
+  {
+    const s0 = sampleRoad(0.06);
+    const off = ROAD_HALF_WIDTH + 2.6;
+    const bx = s0.p[0] + Math.cos(s0.angle) * off;
+    const bz = s0.p[2] - Math.sin(s0.angle) * off;
+    const by = elevation(bx, bz);
+    const stop = new THREE.Group();
+    const rust = new THREE.MeshStandardMaterial({ color: 0x6e5a3c, roughness: 0.85, metalness: 0.35 });
+    const back = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.0, 0.08), rust);
+    back.position.set(0, 1.35, -0.55);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.08, 1.5), rust);
+    roof.position.set(0, 2.4, 0);
+    roof.rotation.x = 0.08;
+    const bench = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.08, 0.45),
+      new THREE.MeshStandardMaterial({ color: 0x7a6244, roughness: 0.9 }),
+    );
+    bench.position.set(0, 0.55, -0.25);
+    const legGeo = new THREE.BoxGeometry(0.1, 2.4, 0.1);
+    for (const lx of [-1.55, 1.55]) {
+      const leg = new THREE.Mesh(legGeo, rust);
+      leg.position.set(lx, 1.2, 0.6);
+      stop.add(leg);
+    }
+    stop.add(back, roof, bench);
+    stop.position.set(bx, by, bz);
+    stop.rotation.y = s0.angle + Math.PI;
+    stop.traverse((o) => {
+      if (o instanceof THREE.Mesh) o.castShadow = true;
+    });
+    root.add(stop);
+
+    const boards: [number, string[], string, string][] = [
+      [0.11, ['ALUS ŠVYTURYS', 'Šalta kaip Baltija'], '#1a4d2e', '#f2e8c8'],
+      [0.2, ['CEPELINAI PAS ONĄ', 'už 3 km →'], '#7d2f2f', '#f2e8c8'],
+    ];
+    for (const [t, lines, bg, fg] of boards) {
+      const s = sampleRoad(t);
+      const side = t < 0.15 ? -1 : 1;
+      const px = s.p[0] + Math.cos(s.angle) * (ROAD_HALF_WIDTH + 3.4) * side;
+      const pz = s.p[2] - Math.sin(s.angle) * (ROAD_HALF_WIDTH + 3.4) * side;
+      const py = elevation(px, pz);
+      const board = new THREE.Group();
+      const face = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.4, 2.2),
+        new THREE.MeshStandardMaterial({ map: billboardTexture(lines, bg, fg), roughness: 0.8 }),
+      );
+      face.position.y = 3.1;
+      const postGeo = new THREE.CylinderGeometry(0.09, 0.11, 3.2, 7);
+      for (const lx of [-1.6, 1.6]) {
+        const post = new THREE.Mesh(postGeo, rust);
+        post.position.set(lx, 1.6, -0.05);
+        board.add(post);
+      }
+      board.add(face);
+      board.position.set(px, py, pz);
+      // Face the road (plane +z toward the centerline), tipped a touch
+      // toward oncoming traffic
+      board.rotation.y =
+        Math.atan2(-Math.cos(s.angle) * side, Math.sin(s.angle) * side) + 0.25 * side;
+      board.traverse((o) => {
+        if (o instanceof THREE.Mesh) o.castShadow = true;
+      });
+      root.add(board);
+    }
+  }
 
   // ROUTE 65 finish gate
   const poleMat2 = new THREE.MeshStandardMaterial({ color: 0x88898c, roughness: 0.5, metalness: 0.7 });
@@ -792,6 +1017,63 @@ export function buildScene(
   };
   addDecal(poster('#7d2f2f'), 1.3, 0.9, -(ALLEY_HALF_WIDTH - 0.04), 2.6, -14, Math.PI / 2);
   addDecal(poster('#2f4d7d'), 1.2, 0.85, -(ALLEY_HALF_WIDTH - 0.04), 1.8, 17, Math.PI / 2);
+  addDecal(spray('SKALSA', '#3fa8d4', 58), 2.6, 1.3, -(ALLEY_HALF_WIDTH - 0.04), 1.6, 22, Math.PI / 2);
+  addDecal(spray('♥ RŪTA', '#d43f6a', 48), 2.2, 1.1, ALLEY_HALF_WIDTH - 0.04, 3.0, 2, -Math.PI / 2);
+  addDecal(poster('#4d7d2f'), 1.25, 0.9, ALLEY_HALF_WIDTH - 0.04, 2.2, -24, -Math.PI / 2);
+
+  // A clothesline sagging between the alley walls, rags drying on it —
+  // rags merged into one mesh, the line itself one tube. Strung high
+  // (7+) so the chase camera (~4.4) passes well under it.
+  {
+    const lineY = 7.4;
+    const lineCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-(ALLEY_HALF_WIDTH - 0.1), lineY, -5),
+      new THREE.Vector3(0, lineY - 0.5, -4.6),
+      new THREE.Vector3(ALLEY_HALF_WIDTH - 0.1, lineY, -4.2),
+    ]);
+    const line = new THREE.Mesh(
+      new THREE.TubeGeometry(lineCurve, 16, 0.015, 4),
+      new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.8 }),
+    );
+    root.add(line);
+    const ragGeos: THREE.BufferGeometry[] = [];
+    const ragColors = [0xb0473a, 0x4a6b8a, 0xc9bfa4, 0x5a7a4a, 0x8a6a8a];
+    const colorAttr: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const t = 0.14 + i * 0.18;
+      const p = lineCurve.getPoint(t);
+      const w = 0.35 + Math.random() * 0.25;
+      const h = 0.5 + Math.random() * 0.35;
+      const rag = new THREE.PlaneGeometry(w, h, 1, 2);
+      // pinch the top edge where the pegs grip, flare the hem
+      const pos = rag.attributes.position;
+      for (let v = 0; v < pos.count; v++) {
+        const vy = pos.getY(v);
+        const k = (vy + h / 2) / h; // 0 hem → 1 top
+        pos.setX(v, pos.getX(v) * (1 - k * 0.55));
+        pos.setZ(v, Math.sin(k * Math.PI) * 0.06);
+      }
+      rag.translate(0, -h / 2, 0);
+      rag.rotateY((Math.random() - 0.5) * 0.7);
+      rag.rotateX((Math.random() - 0.5) * 0.2);
+      rag.translate(p.x, p.y, p.z);
+      const c = new THREE.Color(ragColors[i % ragColors.length]);
+      for (let v = 0; v < rag.attributes.position.count; v++) colorAttr.push(c.r, c.g, c.b);
+      ragGeos.push(rag);
+    }
+    const ragGeo = mergeGeometries(ragGeos);
+    ragGeo.setAttribute('color', new THREE.Float32BufferAttribute(colorAttr, 3));
+    const rags = new THREE.Mesh(
+      ragGeo,
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.95,
+        side: THREE.DoubleSide,
+      }),
+    );
+    rags.castShadow = true;
+    root.add(rags);
+  }
 
   // Lithuanian tricolor hanging off the left wall
   const flagPole = new THREE.Mesh(
@@ -865,7 +1147,7 @@ export function buildScene(
   }
 
   // Power cables sagging across the alley, with hanging bulbs
-  for (const z of [-12, 10]) {
+  for (const z of [-12, -1, 10, 21]) {
     const curve = new THREE.QuadraticBezierCurve3(
       new THREE.Vector3(-ALLEY_HALF_WIDTH, 7.6, z),
       new THREE.Vector3(0, 6.2, z + 0.6),
@@ -969,24 +1251,60 @@ export function buildScene(
     root.add(bag);
   }
 
-  // Scattered litter — also merged into a single mesh
-  const litterGeos: THREE.BufferGeometry[] = [];
-  for (let i = 0; i < 22; i++) {
-    const g = new THREE.PlaneGeometry(0.28, 0.36);
-    g.applyMatrix4(
-      new THREE.Matrix4().makeRotationFromEuler(
-        new THREE.Euler(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI),
+  // Scattered litter — paper scraps, dead bottles and crushed cans,
+  // vertex-tinted per piece, all merged into a single mesh
+  {
+    const litterGeos: THREE.BufferGeometry[] = [];
+    const litterColor: number[] = [];
+    const tint = (geo: THREE.BufferGeometry, hex: number) => {
+      const c = new THREE.Color(hex);
+      for (let v = 0; v < geo.attributes.position.count; v++) litterColor.push(c.r, c.g, c.b);
+      litterGeos.push(geo);
+    };
+    const spot = (): [number, number] => [-7 + Math.random() * 14, -28 + Math.random() * 56];
+    for (let i = 0; i < 22; i++) {
+      // paper scraps
+      const g = new THREE.PlaneGeometry(0.28, 0.36);
+      g.applyMatrix4(
+        new THREE.Matrix4().makeRotationFromEuler(
+          new THREE.Euler(-Math.PI / 2 + (Math.random() - 0.5) * 0.3, 0, Math.random() * Math.PI),
+        ),
+      );
+      const [x, z] = spot();
+      g.translate(x, 0.02, z);
+      tint(g, [0xa8a390, 0xb8b0a0, 0x8a8578][i % 3]);
+    }
+    for (let i = 0; i < 10; i++) {
+      // empty bottles on their sides
+      const g = new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6);
+      g.rotateZ(Math.PI / 2);
+      g.rotateY(Math.random() * Math.PI);
+      const [x, z] = spot();
+      g.translate(x, 0.05, z);
+      tint(g, [0x3a5a2a, 0x5a3a1a, 0x4a4a55][i % 3]);
+    }
+    for (let i = 0; i < 8; i++) {
+      // crushed cans
+      const g = new THREE.CylinderGeometry(0.055, 0.055, 0.07, 7);
+      g.scale(1, 0.6, 1.25);
+      g.rotateY(Math.random() * Math.PI);
+      const [x, z] = spot();
+      g.translate(x, 0.03, z);
+      tint(g, [0xb0b4b8, 0xb08a3a, 0x8a3a3a][i % 3]);
+    }
+    const litterGeo = mergeGeometries(litterGeos);
+    litterGeo.setAttribute('color', new THREE.Float32BufferAttribute(litterColor, 3));
+    root.add(
+      new THREE.Mesh(
+        litterGeo,
+        new THREE.MeshStandardMaterial({
+          vertexColors: true,
+          roughness: 0.9,
+          side: THREE.DoubleSide,
+        }),
       ),
     );
-    g.translate(-7 + Math.random() * 14, 0.02, -28 + Math.random() * 56);
-    litterGeos.push(g);
   }
-  root.add(
-    new THREE.Mesh(
-      mergeGeometries(litterGeos),
-      new THREE.MeshStandardMaterial({ color: 0xa8a390, roughness: 0.95, side: THREE.DoubleSide }),
-    ),
-  );
 
   // Wall lamps with cone shades — flickering at night, off by day
   const lampShadeMat = new THREE.MeshStandardMaterial({ color: 0x22252c, roughness: 0.5, metalness: 0.7 });

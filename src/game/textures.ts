@@ -83,9 +83,46 @@ export function asphaltTextures(repeatX: number, repeatY: number) {
     ctx.stroke();
   }
 
+  // Worn tire tracks — two darker soft bands (the texture tiles, so
+  // they read as traffic lanes wherever it repeats)
+  for (const bx of [140, 340]) {
+    const g = ctx.createLinearGradient(bx - 35, 0, bx + 35, 0);
+    g.addColorStop(0, 'rgba(12,12,16,0)');
+    g.addColorStop(0.5, 'rgba(12,12,16,0.22)');
+    g.addColorStop(1, 'rgba(12,12,16,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(bx - 35, 0, 70, 512);
+  }
+
+  // A manhole cover and a drain grate per tile
+  {
+    const mx = 80 + Math.random() * 350;
+    const my = 80 + Math.random() * 350;
+    ctx.fillStyle = '#17171c';
+    ctx.beginPath();
+    ctx.arc(mx, my, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#2e2e36';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mx, my, 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(mx, my, 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    const gx = 80 + Math.random() * 350;
+    const gy = 80 + Math.random() * 350;
+    ctx.fillStyle = '#131318';
+    ctx.fillRect(gx, gy, 46, 26);
+    ctx.fillStyle = '#2a2a32';
+    for (let b = 0; b < 5; b++) ctx.fillRect(gx + 4 + b * 9, gy + 3, 4, 20);
+  }
+
   return {
     map: toTexture(canvas, repeatX, repeatY),
-    bumpMap: toTexture(canvas, repeatX, repeatY, false),
+    bumpMap: toBump(canvas, repeatX, repeatY),
   };
 }
 
@@ -262,18 +299,20 @@ export function signTexture(text: string) {
   return texture;
 }
 
-// City building facade: plaster/brick base with a grid of windows.
-// At night a fraction of windows glow warm.
+// City building facade: plaster/brick base with a grid of windows —
+// sills, occasional balconies, roofline stain streaks. At night a
+// fraction of windows glow warm. 1024² (only ~6 of these exist).
 export function facadeTexture(hue: number, sat: number, light: number, litProb: number) {
-  const { canvas, ctx } = makeCanvas();
+  const S = 1024;
+  const { canvas, ctx } = makeCanvas(S);
   ctx.fillStyle = `hsl(${hue}, ${sat}%, ${light}%)`;
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, S, S);
 
   // Weathering blotches
-  for (let i = 0; i < 12; i++) {
-    const x = Math.random() * 512;
-    const y = Math.random() * 512;
-    const r = 30 + Math.random() * 90;
+  for (let i = 0; i < 20; i++) {
+    const x = Math.random() * S;
+    const y = Math.random() * S;
+    const r = 60 + Math.random() * 180;
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, `rgba(20,16,12,${0.08 + Math.random() * 0.14})`);
     g.addColorStop(1, 'rgba(20,16,12,0)');
@@ -281,11 +320,23 @@ export function facadeTexture(hue: number, sat: number, light: number, litProb: 
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
   }
 
+  // Roofline rust/water stain streaks running down from the top
+  for (let i = 0; i < 9; i++) {
+    const x = Math.random() * S;
+    const len = 120 + Math.random() * 300;
+    const w = 6 + Math.random() * 18;
+    const g = ctx.createLinearGradient(0, 0, 0, len);
+    g.addColorStop(0, `rgba(48,36,24,${0.18 + Math.random() * 0.15})`);
+    g.addColorStop(1, 'rgba(48,36,24,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, w, len);
+  }
+
   // Window grid
   const cols = 6;
   const rows = 7;
-  const cw = 512 / cols;
-  const ch = 512 / rows;
+  const cw = S / cols;
+  const ch = S / rows;
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const wx = col * cw + cw * 0.22;
@@ -294,29 +345,191 @@ export function facadeTexture(hue: number, sat: number, light: number, litProb: 
       const wh = ch * 0.58;
       // frame
       ctx.fillStyle = 'rgba(30,26,22,0.9)';
-      ctx.fillRect(wx - 3, wy - 3, ww + 6, wh + 6);
+      ctx.fillRect(wx - 6, wy - 6, ww + 12, wh + 12);
       const lit = Math.random() < litProb;
-      ctx.fillStyle = lit
-        ? `hsl(${38 + Math.random() * 14}, 75%, ${52 + Math.random() * 14}%)`
-        : `hsl(220, 18%, ${8 + Math.random() * 9}%)`;
+      if (lit) {
+        // Varied warmth: some lamps golden, some pale, some dim TV-blue
+        const roll = Math.random();
+        ctx.fillStyle =
+          roll < 0.6
+            ? `hsl(${38 + Math.random() * 14}, 75%, ${52 + Math.random() * 14}%)`
+            : roll < 0.85
+              ? `hsl(${30 + Math.random() * 10}, 55%, ${40 + Math.random() * 10}%)`
+              : `hsl(215, 45%, ${45 + Math.random() * 12}%)`;
+      } else {
+        ctx.fillStyle = `hsl(220, 18%, ${8 + Math.random() * 9}%)`;
+      }
       ctx.fillRect(wx, wy, ww, wh);
       if (!lit) {
         // sky glint on dead glass
         ctx.fillStyle = 'rgba(160,180,210,0.18)';
         ctx.fillRect(wx, wy, ww, wh * 0.28);
+        // half-drawn curtain now and then
+        if (Math.random() < 0.3) {
+          ctx.fillStyle = `hsl(${20 + Math.random() * 30}, 25%, 30%)`;
+          ctx.fillRect(wx, wy, ww, wh * (0.2 + Math.random() * 0.3));
+        }
+      } else {
+        // window cross bar
+        ctx.fillStyle = 'rgba(30,26,22,0.8)';
+        ctx.fillRect(wx + ww / 2 - 3, wy, 6, wh);
       }
+      // Sill: light top edge + shadow beneath (reads as depth)
+      ctx.fillStyle = `hsl(${hue}, ${Math.max(0, sat - 12)}%, ${Math.min(90, light + 18)}%)`;
+      ctx.fillRect(wx - 10, wy + wh + 6, ww + 20, 7);
+      ctx.fillStyle = 'rgba(10,8,6,0.4)';
+      ctx.fillRect(wx - 10, wy + wh + 13, ww + 20, 9);
+      // Streak of grime under some sills
+      if (Math.random() < 0.4) {
+        const g = ctx.createLinearGradient(0, wy + wh + 20, 0, wy + wh + 70);
+        g.addColorStop(0, 'rgba(25,20,15,0.3)');
+        g.addColorStop(1, 'rgba(25,20,15,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(wx - 4, wy + wh + 20, ww + 8, 50);
+      }
+    }
+    // A balcony strip on some middle floors: railing bars over the sill line
+    if (row > 0 && row < rows - 2 && Math.random() < 0.35) {
+      const by = row * ch + ch * 0.82;
+      const bx = Math.floor(Math.random() * (cols - 1)) * cw + cw * 0.1;
+      ctx.fillStyle = 'rgba(20,18,16,0.85)';
+      ctx.fillRect(bx, by, cw * 0.8, 6);
+      for (let b = 0; b < 10; b++) {
+        ctx.fillRect(bx + b * (cw * 0.8 / 9), by - 26, 4, 26);
+      }
+      ctx.fillRect(bx, by - 30, cw * 0.8, 5);
     }
   }
 
   // Street-level grime
-  const grime = ctx.createLinearGradient(0, 380, 0, 512);
+  const grime = ctx.createLinearGradient(0, S * 0.74, 0, S);
   grime.addColorStop(0, 'rgba(8,8,10,0)');
   grime.addColorStop(1, 'rgba(8,8,10,0.55)');
   ctx.fillStyle = grime;
-  ctx.fillRect(0, 380, 512, 132);
+  ctx.fillRect(0, S * 0.74, S, S * 0.26);
 
-  edgeAO(ctx, 512, 512, 0.35);
+  edgeAO(ctx, S, S, 0.35);
   return { map: toTexture(canvas, 1, 1), bumpMap: toBump(canvas, 1, 1) };
+}
+
+// Distant city skyline silhouette — a long strip of dark rooftops with
+// pinprick lit windows (night) mapped onto a ring of planes behind the
+// buildings. 1024×256, one per scene.
+export function skylineTexture(night: boolean) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, 1024, 256);
+  let x = 0;
+  while (x < 1024) {
+    const w = 30 + Math.random() * 70;
+    const h = 60 + Math.random() * 150;
+    // Day silhouettes sit in atmospheric haze — pale blue-grey, barely
+    // darker than the sky, so they read as distance instead of panels
+    const shade = night ? 6 + Math.random() * 6 : 58 + Math.random() * 8;
+    ctx.fillStyle = `hsl(222, ${night ? 20 : 16}%, ${shade}%)`;
+    ctx.fillRect(x, 256 - h, w, h);
+    // occasional chimney / antenna
+    if (Math.random() < 0.4) {
+      ctx.fillRect(x + w * 0.2 + Math.random() * w * 0.5, 256 - h - 14, 5, 14);
+    }
+    // haze veil over the lower half so rooftops fade toward the ground
+    if (!night) {
+      const veil = ctx.createLinearGradient(0, 256 - h, 0, 256);
+      veil.addColorStop(0, 'rgba(190,205,225,0)');
+      veil.addColorStop(1, 'rgba(190,205,225,0.55)');
+      ctx.fillStyle = veil;
+      ctx.fillRect(x, 256 - h, w, h);
+    }
+    if (night) {
+      // pinprick lit windows
+      for (let wy = 256 - h + 8; wy < 248; wy += 12) {
+        for (let wx = x + 4; wx < x + w - 4; wx += 10) {
+          if (Math.random() < 0.13) {
+            ctx.fillStyle = `hsla(${35 + Math.random() * 15}, 80%, 60%, ${0.5 + Math.random() * 0.5})`;
+            ctx.fillRect(wx, wy, 3, 4);
+            ctx.fillStyle = `hsl(225, 20%, ${shade}%)`;
+          }
+        }
+      }
+    }
+    x += w + Math.random() * 24;
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  return texture;
+}
+
+// Tall-grass / wildflower tuft on a transparent card, used alpha-tested
+// on merged cross-planes in the countryside.
+export function tuftTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+  ctx.clearRect(0, 0, 128, 128);
+  for (let i = 0; i < 26; i++) {
+    const bx = 20 + Math.random() * 88;
+    const lean = (Math.random() - 0.5) * 40;
+    const h = 50 + Math.random() * 70;
+    const g = 30 + Math.random() * 35;
+    ctx.strokeStyle = `hsl(${85 + Math.random() * 30}, ${40 + Math.random() * 20}%, ${g}%)`;
+    ctx.lineWidth = 2 + Math.random() * 2;
+    ctx.beginPath();
+    ctx.moveTo(bx, 128);
+    ctx.quadraticCurveTo(bx + lean * 0.3, 128 - h * 0.6, bx + lean, 128 - h);
+    ctx.stroke();
+  }
+  // A few flower heads
+  for (let i = 0; i < 5; i++) {
+    ctx.fillStyle = ['#e8d44f', '#d8dde2', '#c47ab8'][Math.floor(Math.random() * 3)];
+    ctx.beginPath();
+    ctx.arc(24 + Math.random() * 80, 30 + Math.random() * 40, 3 + Math.random() * 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Roadside billboard ad — weathered Lithuanian advertising.
+export function billboardTexture(lines: string[], bg: string, fg: string) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 512, 256);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(8, 8, 496, 240);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = fg;
+  lines.forEach((line, i) => {
+    ctx.font = i === 0 ? '900 64px system-ui, sans-serif' : 'italic 600 34px system-ui, sans-serif';
+    ctx.fillText(line, 256, 100 + i * 70);
+  });
+  // Weathering: streaks + a peeled corner
+  for (let i = 0; i < 6; i++) {
+    const x = Math.random() * 512;
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0, `rgba(30,24,18,${0.1 + Math.random() * 0.15})`);
+    g.addColorStop(1, 'rgba(30,24,18,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, 10 + Math.random() * 20, 256);
+  }
+  ctx.fillStyle = '#5c5248';
+  ctx.beginPath();
+  ctx.moveTo(512, 200);
+  ctx.lineTo(512, 256);
+  ctx.lineTo(448, 256);
+  ctx.closePath();
+  ctx.fill();
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 export function neonTexture(text: string, color: string) {
