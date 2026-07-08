@@ -36,14 +36,21 @@ All schemes ignore tiny thumb wobble (deadzone), smooth the input, and
 give finer steering near the stick's center.
 Walking drunk means your heading drifts on its own — deal with it.
 
-**The RV:** the alley opens onto a small city — a few blocks of streets — and
-on the main street waits the team's one and only vehicle: a beat-up cab-over
-**RV** that seats the whole 4-player crew. Walk up and press **E** (or tap the
-**🚗** button) to hop in; press **E** / tap **🚪** to get out. The first one in
-drives (invisible — busy steering), everyone else hangs out of the windows
-waving their bottles. If the driver bails, the next passenger inherits the
+**The rides:** the alley opens onto a small city — a few blocks of streets —
+and on the main street waits the team's fleet: a beat-up cab-over **RV**, and
+parked ahead of it a green **sedan towing a camper**. Each seats a 4-player
+crew. Walk up and press **E** (or tap the **🚗** button) to hop in; press
+**E** / tap **🚪** to get out. The first one in drives (invisible — busy
+steering), everyone else hangs out of the windows waving their bottles — in
+the caravan the passengers ride in the camper, and you can board straight
+from the camper door. If the driver bails, the next passenger inherits the
 wheel. Only the driver and walkers collect bottles — driving grabs them in a
 wider radius, but most bottles hide in the alley on foot.
+
+**Towing:** the camper is properly articulated — it swings wide in corners,
+settles in behind you on the straights, and folds toward the hitch stop when
+you reverse (backing up a trailer is exactly as hard as in real life). The
+camper hits things too: clip a wall with it and the whole rig crunches.
 
 **Dashboard & atmosphere:** aboard the RV you get a working speedometer and
 tachometer; a fully synthesized soundscape (WebAudio, no audio files) covers
