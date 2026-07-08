@@ -31,8 +31,8 @@ const BUM_WALK_SPEED = 2.1;
 const BUM_FLEE_SPEED = 5.5;
 const BUM_FLEE_SECONDS = 4.5;
 const BUM_CLING_MARGIN = 1.0; // reach past the vehicle's collision circle
-const BUM_MAX = 4;
-const BUM_FIRST_WAVE = 14; // seconds into the round
+const BUM_MAX = 6;
+const BUM_FIRST_WAVE = 8; // seconds into the round
 const HIT_RANGE = 2.6;
 
 // Weighted: beer common, vodka rare
@@ -403,7 +403,7 @@ export class HostSim {
           targetCar.p[2] + Math.cos(angle) * dist,
         );
       }
-      this.bumWaveAt = this.clock + 40 + Math.random() * 25;
+      this.bumWaveAt = this.clock + 18 + Math.random() * 14;
     }
     s.bums = s.bums.filter((bum) => {
       if (bum.mode === 'flee') {

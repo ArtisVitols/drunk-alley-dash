@@ -73,7 +73,7 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   `controls.active`.
 - **Bums** (`src/net/network.ts` `BumState`, host AI in `host.ts`, meshes in
   `src/game/bums.ts`): host-simulated stinky men/women spawn in waves
-  (first ~14 s in, then every ~40-65 s, max 4), shamble to the nearest
+  (first ~8 s in, then every ~18-32 s, max 6), shamble to the nearest
   point of a vehicle (cab or camper) and cling banging on the door — a
   clung-to vehicle can't accelerate (driver's client zeroes throttle).
   Three stick hits → `mode: 'flee'`, they sprint off screaming and despawn.
