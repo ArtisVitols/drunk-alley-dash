@@ -381,14 +381,6 @@ button:disabled {
   #gauges {
     left: 10px;
   }
-
-  #route-label {
-    top: 64px;
-    bottom: auto;
-    left: auto;
-    right: 12px;
-    font-size: 12px;
-  }
 }
 
 #car-btn {
@@ -426,11 +418,12 @@ button:disabled {
   }
 
   #route-label {
-    top: auto;
-    bottom: max(52px, calc(env(safe-area-inset-bottom) + 44px));
-    left: 18px;
+    top: 64px;
+    bottom: auto;
+    left: auto;
+    right: 12px;
     transform: none;
-    font-size: 13px;
+    font-size: 12px;
   }
 
   #help {
