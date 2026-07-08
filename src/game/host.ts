@@ -8,6 +8,7 @@ import type {
 } from '../net/network';
 import { BOTTLE_POINTS, CAR_SEATS, CAR_SPAWNS } from '../net/network';
 import { MAX_PLAYERS } from '../net/peer';
+import { trailerCenterXZ } from './car';
 import { FINISH, ROAD_OBSTACLE_DEFS, sampleRoad } from './road';
 
 const BOTTLE_COUNT = 34; // spread across alley + city + the road
@@ -91,7 +92,7 @@ export class HostSim {
     return this.state.cars.find((c) => c.occupants.includes(playerId));
   }
 
-  setPos(id: string, p: Vec3, ry: number, moving: boolean, working: boolean) {
+  setPos(id: string, p: Vec3, ry: number, moving: boolean, working: boolean, tr?: number) {
     const player = this.state.players.find((pl) => pl.id === id);
     if (!player) return;
     if (player.car !== null) {
@@ -101,6 +102,7 @@ export class HostSim {
       if (car && car.occupants[0] === id) {
         car.p = p;
         car.ry = ry;
+        car.tr = tr ?? ry;
         player.p = p;
         player.ry = ry;
         player.moving = moving;
@@ -127,7 +129,14 @@ export class HostSim {
         if (car.occupants.length >= CAR_SEATS) continue;
         const dx = player.p[0] - car.p[0];
         const dz = player.p[2] - car.p[2];
-        const d2 = dx * dx + dz * dz;
+        let d2 = dx * dx + dz * dz;
+        if (car.kind === 'caravan') {
+          // The camper door counts too — board from beside the trailer
+          const [tx, tz] = trailerCenterXZ(car.p[0], car.p[2], car.ry, car.tr);
+          const tdx = player.p[0] - tx;
+          const tdz = player.p[2] - tz;
+          d2 = Math.min(d2, tdx * tdx + tdz * tdz);
+        }
         if (d2 < bestD) {
           bestD = d2;
           best = car;
@@ -163,12 +172,13 @@ export class HostSim {
       p.ry = 0;
       p.car = null;
     });
-    // The full fleet, always: sedan, van, RV, truck
+    // The team fleet: the RV, and the sedan towing the camper ahead of it
     s.cars = CAR_SPAWNS.map((spawn, i) => ({
       id: i + 1,
       kind: spawn.kind,
       p: [...spawn.p] as Vec3,
       ry: spawn.ry,
+      tr: spawn.ry,
       occupants: [],
     }));
     // Fresh run: the road out of town is blocked again

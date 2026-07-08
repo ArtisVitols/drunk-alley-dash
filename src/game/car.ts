@@ -23,11 +23,35 @@ const CAR_STATS: Record<
   van: { max: 13.5, reverse: 5.5, accel: 11, turn: 2.0, radius: 1.3, sway: 0.65 },
   rv: { max: 11.5, reverse: 4.5, accel: 8.5, turn: 1.7, radius: 1.85, sway: 0.95 },
   truck: { max: 13, reverse: 5.5, accel: 10, turn: 1.9, radius: 1.4, sway: 0.6 },
+  // The sedan again, but dragging a camper: quicker than the RV, wallows
+  caravan: { max: 14, reverse: 5, accel: 12, turn: 2.0, radius: 1.1, sway: 0.55 },
 };
 
 const DRAG = 0.55;
 
 export const carRadius = (kind: CarKind) => CAR_STATS[kind].radius;
+
+// Towing geometry (caravan): the camper articulates around a hitch
+// behind the sedan; its axle chases the hitch like a real trailer.
+const HITCH_OFFSET = 2.0; // car center → hitch ball
+const TRAILER_LEN = 2.7; // hitch → camper axle
+const TRAILER_BODY = 2.2; // hitch → camper body center
+export const TRAILER_RADIUS = 1.35;
+const MAX_HITCH_BEND = 1.15; // rad; past this it would jackknife into the car
+
+const wrapAngle = (a: number) => ((a + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+
+// Plain math (host + collision lists use it on network Vec3s, no THREE)
+export function trailerCenterXZ(
+  x: number,
+  z: number,
+  ry: number,
+  tr: number,
+): [number, number] {
+  const hx = x - Math.sin(ry) * HITCH_OFFSET;
+  const hz = z - Math.cos(ry) * HITCH_OFFSET;
+  return [hx - Math.sin(tr) * TRAILER_BODY, hz - Math.cos(tr) * TRAILER_BODY];
+}
 
 export type Surface = 'city' | 'asphalt' | 'sand' | 'grass';
 
@@ -42,6 +66,7 @@ interface CarRig {
   body: THREE.Group;
   wheels: THREE.Mesh[];
   slots: Slot[];
+  trailer?: THREE.Group; // articulated camper, pivoted at the hitch
 }
 
 const std = (color: number, roughness = 0.5, metalness = 0.4) =>
@@ -88,8 +113,9 @@ function addLights(body: THREE.Group, halfW: number, y: number, front: number, r
 
 // Four very different rides. All face +Z.
 function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
-  if (kind === 'sedan') {
-    const paint = std(0xd9534f, 0.35, 0.55);
+  if (kind === 'sedan' || kind === 'caravan') {
+    // The tow car wears green so nobody confuses it with a plain sedan
+    const paint = std(kind === 'caravan' ? 0x3f8f5f : 0xd9534f, 0.35, 0.55);
     const hull = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.5, 3.1), paint);
     hull.position.y = 0.55;
     const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.52, 1.5), GLASS());
@@ -194,9 +220,75 @@ function buildBody(kind: CarKind, body: THREE.Group, wheels: THREE.Mesh[]) {
   }
 }
 
+// Teardrop-ish camper hanging off the hitch. Local origin IS the hitch
+// ball, so rotating this group articulates the whole trailer; the body
+// sits behind it, single axle under the middle.
+function buildTrailer(pivot: THREE.Group, wheels: THREE.Mesh[]) {
+  const cream = std(0xece7d9, 0.55, 0.2);
+  const accent = std(0x4a7a9d, 0.5, 0.3);
+  // Drawbar from the hitch back to the box
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 1.1), std(0x2a2d33, 0.6, 0.6));
+  bar.position.set(0, 0.42, -0.5);
+  const barL = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.09, 0.9), std(0x2a2d33, 0.6, 0.6));
+  barL.position.set(-0.28, 0.42, -0.62);
+  barL.rotation.y = -0.5;
+  const barR = barL.clone();
+  barR.position.x = 0.28;
+  barR.rotation.y = 0.5;
+  // Rounded box body
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.45, 2.9), cream);
+  box.position.set(0, 1.22, -TRAILER_BODY);
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.96, 0.96, 2.86, 3, 1), cream);
+  roof.rotation.z = Math.PI / 2;
+  roof.rotation.x = Math.PI / 2;
+  roof.scale.y = 0.32;
+  roof.position.set(0, 1.95, -TRAILER_BODY);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.92, 0.26, 2.92), accent);
+  stripe.position.set(0, 0.86, -TRAILER_BODY);
+  // Window band + rear window + door
+  const windowBand = new THREE.Mesh(new THREE.BoxGeometry(1.94, 0.42, 1.7), GLASS());
+  windowBand.position.set(0, 1.5, -TRAILER_BODY - 0.2);
+  const rearWin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.4, 0.06), GLASS());
+  rearWin.position.set(0, 1.5, -TRAILER_BODY - 1.48);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.25, 0.62), std(0xb8b0a0, 0.6, 0.2));
+  door.position.set(0.96, 1.05, -TRAILER_BODY + 0.55);
+  // Roof vent + jockey wheel up front
+  const vent = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.14, 0.45), std(0xb8b0a0, 0.6, 0.2));
+  vent.position.set(0, 2.28, -TRAILER_BODY - 0.5);
+  const jockey = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 8), std(0x15161a, 0.8, 0.2));
+  jockey.rotation.z = Math.PI / 2;
+  jockey.position.set(0, 0.12, -0.35);
+  pivot.add(bar, barL, barR, box, roof, stripe, windowBand, rearWin, door, vent, jockey);
+  // Single axle
+  const geo = new THREE.CylinderGeometry(0.3, 0.3, 0.22, 12);
+  const mat = std(0x15161a, 0.8, 0.2);
+  for (const side of [-1, 1]) {
+    const wheel = new THREE.Mesh(geo, mat);
+    wheel.rotation.z = Math.PI / 2;
+    wheel.position.set(0.98 * side, 0.3, -TRAILER_LEN);
+    pivot.add(wheel);
+    wheels.push(wheel);
+  }
+  // Tail lights
+  const tailMat = new THREE.MeshStandardMaterial({
+    color: 0x7a1212,
+    emissive: 0xd92222,
+    emissiveIntensity: 1.1,
+  });
+  for (const side of [-1, 1]) {
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.06), tailMat);
+    tail.position.set(0.7 * side, 0.75, -TRAILER_BODY - 1.5);
+    pivot.add(tail);
+  }
+}
+
 // Passenger window/bed anchor points (car-local; slot 0..2 for
 // occupants 1..3 — the driver is inside, invisible, steering).
-const SLOT_SPECS: Record<CarKind, { x: number; y: number; z: number; mode: 'lean' | 'stand' }[]> = {
+// `trailer` slots anchor to the camper and articulate with it.
+const SLOT_SPECS: Record<
+  CarKind,
+  { x: number; y: number; z: number; mode: 'lean' | 'stand'; trailer?: boolean }[]
+> = {
   sedan: [
     { x: 0.78, y: 1.0, z: 0.45, mode: 'lean' },
     { x: -0.78, y: 1.0, z: -0.55, mode: 'lean' },
@@ -217,6 +309,13 @@ const SLOT_SPECS: Record<CarKind, { x: number; y: number; z: number; mode: 'lean
     { x: -0.42, y: 0.76, z: -0.6, mode: 'stand' },
     { x: 0.42, y: 0.76, z: -1.5, mode: 'stand' },
   ],
+  // One up front with the driver, two living it up in the camper
+  // (trailer-local coords, z measured back from the hitch)
+  caravan: [
+    { x: 0.78, y: 1.0, z: 0.45, mode: 'lean' },
+    { x: 0.99, y: 1.45, z: -1.9, mode: 'lean', trailer: true },
+    { x: -0.99, y: 1.45, z: -2.6, mode: 'lean', trailer: true },
+  ],
 };
 
 export function createCarMesh(kind: CarKind): THREE.Group {
@@ -225,10 +324,20 @@ export function createCarMesh(kind: CarKind): THREE.Group {
   const wheels: THREE.Mesh[] = [];
   buildBody(kind, body, wheels);
 
+  // The camper articulates independently of the car body, so it hangs
+  // off the group (not the swaying body), pivoted at the hitch ball
+  let trailer: THREE.Group | undefined;
+  if (kind === 'caravan') {
+    trailer = new THREE.Group();
+    trailer.position.set(0, 0, -2.0); // HITCH_OFFSET behind the car center
+    buildTrailer(trailer, wheels);
+    group.add(trailer);
+  }
+
   const slots: Slot[] = SLOT_SPECS[kind].map((spec) => {
     const anchor = new THREE.Group();
     anchor.position.set(spec.x, spec.y, spec.z);
-    body.add(anchor);
+    (spec.trailer && trailer ? trailer : body).add(anchor);
     return { anchor, mode: spec.mode, side: (spec.x >= 0 ? 1 : -1) as 1 | -1, playerId: null };
   });
 
@@ -236,8 +345,14 @@ export function createCarMesh(kind: CarKind): THREE.Group {
   group.traverse((o) => {
     if (o instanceof THREE.Mesh) o.castShadow = true;
   });
-  group.userData.carRig = { body, wheels, slots } satisfies CarRig;
+  group.userData.carRig = { body, wheels, slots, trailer } satisfies CarRig;
   return group;
+}
+
+// Pose a car mesh's camper from world yaws (driver sim or network state)
+export function setTrailerAngle(carGroup: THREE.Group, ry: number, tr: number) {
+  const rig = carGroup.userData.carRig as CarRig | undefined;
+  if (rig?.trailer) rig.trailer.rotation.y = wrapAngle(tr - ry);
 }
 
 // Upper-body drunk guy hanging out of a window (lean) or standing in
@@ -349,19 +464,29 @@ export function applyCarWobble(mesh: THREE.Group, t: number, dt: number, speed: 
   }
 }
 
+const trailerTmp = new THREE.Vector3();
+
 export class CarController {
   pos = new THREE.Vector3();
   ry = 0;
   speed = 0;
+  trailerRy = 0; // camper heading; only meaningful for towing kinds
   crashIntensity = 0; // set on a hard hit; consumer resets after use
+  private kind: CarKind = 'sedan';
   private stats = CAR_STATS.sedan;
   private swayClock = Math.random() * 10;
 
-  reset(p: Vec3, ry: number, kind: CarKind) {
+  get towing(): boolean {
+    return this.kind === 'caravan';
+  }
+
+  reset(p: Vec3, ry: number, kind: CarKind, tr?: number) {
     this.pos.set(p[0], 0, p[2]);
     this.ry = ry;
     this.speed = 0;
+    this.kind = kind;
     this.stats = CAR_STATS[kind];
+    this.trailerRy = tr ?? ry;
   }
 
   update(
@@ -398,6 +523,34 @@ export class CarController {
       if (Math.abs(this.speed) > 2.5) this.crashIntensity = Math.abs(this.speed);
       this.speed *= Math.pow(0.02, dt); // crunch — bleed speed fast
     }
+    if (this.towing) this.updateTrailer(dt, world, circles, extraObstacles);
+  }
+
+  // Kinematic tow: the camper yaws so its axle chases the hitch.
+  // Driving forward it settles behind the car; reversing folds it
+  // toward the jackknife clamp (backing a trailer is HARD, as in life).
+  private updateTrailer(
+    dt: number,
+    world: WorldGeom,
+    circles: Circle[],
+    extraObstacles?: Obstacle[],
+  ) {
+    this.trailerRy += (this.speed / TRAILER_LEN) * Math.sin(this.ry - this.trailerRy) * dt;
+    const bend = wrapAngle(this.ry - this.trailerRy);
+    if (bend > MAX_HITCH_BEND) this.trailerRy = this.ry - MAX_HITCH_BEND;
+    else if (bend < -MAX_HITCH_BEND) this.trailerRy = this.ry + MAX_HITCH_BEND;
+
+    // The camper hits things too: shove the whole rig by its pushout
+    const [cx, cz] = trailerCenterXZ(this.pos.x, this.pos.z, this.ry, this.trailerRy);
+    trailerTmp.set(cx, 0, cz);
+    const hitWorld = collideCircle(trailerTmp, TRAILER_RADIUS, world, extraObstacles);
+    const hitCars = collideCircles(trailerTmp, TRAILER_RADIUS, circles);
+    if (hitWorld || hitCars) {
+      this.pos.x += trailerTmp.x - cx;
+      this.pos.z += trailerTmp.z - cz;
+      if (Math.abs(this.speed) > 2.5) this.crashIntensity = Math.abs(this.speed);
+      this.speed *= Math.pow(0.02, dt);
+    }
   }
 }
 
@@ -406,6 +559,8 @@ export class RemoteCar {
   readonly group: THREE.Group;
   private targetPos = new THREE.Vector3();
   private targetRy = 0;
+  private targetTr = 0;
+  private trailerRy = 0;
   private lastPos = new THREE.Vector3();
   private speed = 0;
 
@@ -417,16 +572,19 @@ export class RemoteCar {
     return this.speed;
   }
 
-  setTarget(p: Vec3, ry: number) {
+  setTarget(p: Vec3, ry: number, tr?: number) {
     // y is derived from terrain, never from the network
     this.targetPos.set(p[0], elevation(p[0], p[2]), p[2]);
     this.targetRy = ry;
+    this.targetTr = tr ?? ry;
   }
 
-  snap(p: Vec3, ry: number) {
-    this.setTarget(p, ry);
+  snap(p: Vec3, ry: number, tr?: number) {
+    this.setTarget(p, ry, tr);
     this.group.position.copy(this.targetPos);
     this.group.rotation.y = ry;
+    this.trailerRy = this.targetTr;
+    setTrailerAngle(this.group, ry, this.trailerRy);
   }
 
   update(dt: number, t: number) {
@@ -437,6 +595,8 @@ export class RemoteCar {
     const delta =
       ((this.targetRy - this.group.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     this.group.rotation.y += delta * k;
+    this.trailerRy += wrapAngle(this.targetTr - this.trailerRy) * k;
+    setTrailerAngle(this.group, this.group.rotation.y, this.trailerRy);
     this.group.rotation.x = slopePitch(
       this.group.position.x,
       this.group.position.z,
