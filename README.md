@@ -20,8 +20,20 @@ One player clicks **Create room** and shares the 4-letter code; up to 3 friends
 enter it and **Join**. The host starts the round (solo works too).
 
 Controls: **W/S** move forward/back, **A/D** turn (arrows work too).
-On **phones/tablets**, drag anywhere on the screen — a floating joystick
-appears under your thumb (up/down walks, left/right turns).
+On **phones/tablets** (the primary way to play) there are three touch
+schemes — a small button in the top-right corner cycles through them and
+your choice is remembered:
+
+- **🕹 Joystick** — drag anywhere and a stick appears under your thumb:
+  up/down walks or drives, left/right turns.
+- **👉 Point to go** — drag in the direction you want to go (relative to
+  the camera); your drunk turns and heads that way himself. Driving, the
+  RV steers toward where you point — point behind it to reverse.
+- **🎮 Two thumbs** — left half of the screen is gas (slide up/down),
+  right half is steering (slide sideways). Best for the road trip.
+
+All schemes ignore tiny thumb wobble (deadzone), smooth the input, and
+give finer steering near the stick's center.
 Walking drunk means your heading drifts on its own — deal with it.
 
 **The RV:** the alley opens onto a small city — a few blocks of streets — and

@@ -58,7 +58,14 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   files); context unlocks on first gesture. Engine loop follows the smoothed
   RPM from `src/game/gauges.ts` (canvas dials, shown while aboard). Ambient
   critters (`src/game/critters.ts`) are client-side only — never synced.
-- `main.ts` is the glue: input (WASD + floating touch joystick + context button),
+- **Touch controls** (`src/game/controls.ts`): three schemes cycled by the
+  corner `#ctl-btn` and persisted in localStorage — `stick` (floating
+  joystick), `point` (camera-relative "go where you point", needs
+  heading/camYaw each frame), `dual` (left half = throttle, right half =
+  steer). All share deadzone + expo + smoothing + a base that follows the
+  thumb past the rim. Touch overrides keyboard while `controls.active`;
+  `__dad.controlMode`/`setControlMode` for tests.
+- `main.ts` is the glue: input (WASD + touch schemes + context button),
   state→scene application, camera, HUD wiring (`src/game/hud.ts` ↔ `index.html`).
 
 ## Verification

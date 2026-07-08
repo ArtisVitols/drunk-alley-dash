@@ -24,6 +24,7 @@ import {
   slopePitch,
   syncCarPassengers,
 } from './game/car';
+import { TouchControls, type ControlMode } from './game/controls';
 import { Critters } from './game/critters';
 import { Gauges } from './game/gauges';
 import { RoadObstacles } from './game/obstacles';
@@ -151,52 +152,9 @@ window.addEventListener('keyup', (e) => {
   if (key) keys[key] = false;
 });
 
-// Touch joystick: floats to wherever the thumb lands on the canvas.
-// Drag up/down = walk, drag left/right = turn.
-const stick = document.getElementById('stick')!;
-const stickKnob = document.getElementById('stick-knob')!;
-const JOY_RADIUS = 56;
-const joy = { pointerId: null as number | null, baseX: 0, baseY: 0, fwd: 0, turn: 0 };
-
-canvas.addEventListener('pointerdown', (e) => {
-  if (e.pointerType !== 'touch' || joy.pointerId !== null || !inRoom) return;
-  joy.pointerId = e.pointerId;
-  joy.baseX = e.clientX;
-  joy.baseY = e.clientY;
-  stick.style.left = `${e.clientX}px`;
-  stick.style.top = `${e.clientY}px`;
-  stickKnob.style.transform = 'translate(-50%, -50%)';
-  stick.classList.remove('hidden');
-  canvas.setPointerCapture(e.pointerId);
-  e.preventDefault();
-});
-canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== joy.pointerId) return;
-  let dx = e.clientX - joy.baseX;
-  let dy = e.clientY - joy.baseY;
-  const len = Math.hypot(dx, dy);
-  if (len > JOY_RADIUS) {
-    dx *= JOY_RADIUS / len;
-    dy *= JOY_RADIUS / len;
-  }
-  stickKnob.style.transform = `translate(calc(${dx}px - 50%), calc(${dy}px - 50%))`;
-  joy.fwd = -dy / JOY_RADIUS;
-  joy.turn = -dx / JOY_RADIUS;
-});
-const joyEnd = (e: PointerEvent) => {
-  if (e.pointerId !== joy.pointerId) return;
-  joy.pointerId = null;
-  joy.fwd = 0;
-  joy.turn = 0;
-  stick.classList.add('hidden');
-};
-canvas.addEventListener('pointerup', joyEnd);
-canvas.addEventListener('pointercancel', joyEnd);
-
-if (window.matchMedia('(pointer: coarse)').matches) {
-  const help = document.getElementById('help');
-  if (help) help.innerHTML = 'Drag to stagger &nbsp; 🚗 button for cars &nbsp; stand at junk to clear &nbsp;·&nbsp; 🍺 +1 &nbsp; 🍷 +2 &nbsp; 🥃 +3';
-}
+// Touch controls: three switchable schemes (see game/controls.ts), the
+// 🕹/👉/🎮 corner button cycles them.
+const controls = new TouchControls(canvas, () => inRoom);
 
 // --- Cars: hop in / get out -------------------------------------------------
 
@@ -618,9 +576,16 @@ renderer.setAnimationLoop(() => {
     if (latestState) applyState(latestState, t);
     let fwd = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
     let turn = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
-    if (joy.pointerId !== null) {
-      fwd = joy.fwd;
-      turn = joy.turn;
+    {
+      const driving = myCarId !== null && amDriver;
+      const heading = driving ? carCtrl.ry : local.ry;
+      const p = driving ? carCtrl.pos : local.pos;
+      const camYaw = Math.atan2(p.x - camera.position.x, p.z - camera.position.z);
+      controls.sample(dt, heading, camYaw, driving);
+      if (controls.active) {
+        fwd = controls.fwd;
+        turn = controls.turn;
+      }
     }
     // Other cars are round blockers; uncleared road junk blocks too
     const circles: Circle[] = [];
@@ -774,6 +739,12 @@ renderer.setAnimationLoop(() => {
   get alt(): number {
     const pose = currentPose();
     return elevation(pose.p[0], pose.p[2]);
+  },
+  get controlMode(): string {
+    return controls.mode;
+  },
+  setControlMode(m: string): void {
+    controls.setMode(m as ControlMode);
   },
   get critters(): number {
     return critters.count;
