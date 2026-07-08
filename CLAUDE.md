@@ -31,11 +31,20 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   (`LocalController` walking, `CarController` driving in `src/game/car.ts`) and
   reports positions; the host trusts drivers/walkers, pins passengers to cars,
   and resolves pickups/seats/scores.
-- **The RV**: the single vehicle (CAR_SPAWNS has one 'rv' entry at (0, 42));
-  up to 4 occupants; `occupants[0]` drives (rendered invisible), the rest are
-  window passenger meshes (`syncCarPassengers`). Driver exit promotes the next
-  occupant. Vehicle↔walker collision via circles (`collideCircles`); other
-  car kinds' builders remain in `car.ts` but never spawn.
+- **The fleet**: two vehicles (CAR_SPAWNS): the RV at (0, 42) and a
+  'caravan' — a sedan towing a camper — at (0, 56). Up to 4 occupants each;
+  `occupants[0]` drives (rendered invisible), the rest are window passenger
+  meshes (`syncCarPassengers`; caravan passengers ride in the camper).
+  Driver exit promotes the next occupant. Vehicle↔walker collision via
+  circles (`collideCircles`); other car kinds' builders remain in `car.ts`
+  but never spawn.
+- **Towing** (`car.ts`): the camper is kinematic — its axle chases the hitch
+  (`trailerRy += speed/TRAILER_LEN · sin(ry − trailerRy) · dt`, bend clamped
+  to ±1.15 rad so reversing folds but never jackknifes through the car). The
+  trailer is a second collision circle (`trailerCenterXZ`/`TRAILER_RADIUS`)
+  that shoves the whole rig on impact. `CarState.tr` carries the trailer yaw
+  over the network (drivers send it in 'pos'); boarding works from beside
+  the camper too (host + client both check the trailer circle).
 - **Road trip** (`src/game/road.ts` = shared curve/surface/elevation math,
   `src/game/obstacles.ts` = meshes/AABBs): the city gate opens onto a winding
   road over hills to the ROUTE 65 finish. Terrain height = `elevation(x, z)`
@@ -75,7 +84,7 @@ Puppeteer (installed in the session scratchpad, NOT in this repo) with
 `--enable-unsafe-swiftshader --use-gl=angle --use-angle=swiftshader`; headless
 Firefox has no WebGL here. Real multiplayer flows work headless through the
 PeerJS public broker. `window.__dad` is the read-only test handle (pos/ry/car/
-driver/speed/bottles/cars/surface/phase/obstacles/roadPoint(t) +
+driver/speed/trailer/bottles/cars/surface/phase/obstacles/roadPoint(t) +
 `teleport(x,z,ry?)` gated behind `?dev=1`, which moves the car too when
 driving). Expect
 ~2-5 FPS under SwiftShader — sim runs slow-motion (dt clamp), so use generous

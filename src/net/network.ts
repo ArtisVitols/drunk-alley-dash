@@ -35,7 +35,7 @@ export interface RoadObstacleState {
   cleared: boolean;
 }
 
-export type CarKind = 'sedan' | 'van' | 'rv' | 'truck';
+export type CarKind = 'sedan' | 'van' | 'rv' | 'truck' | 'caravan';
 
 export const CAR_SEATS = 4; // 1 driver + 3 passengers
 
@@ -44,14 +44,17 @@ export interface CarState {
   kind: CarKind;
   p: Vec3;
   ry: number;
+  // Trailer heading (world yaw) for towing kinds; equals ry when parked
+  tr: number;
   // occupants[0] is the driver; the rest are passengers in seat order
   occupants: string[];
 }
 
-// The one and only vehicle: the team RV, parked on the main street
-// pointing at the city gate. Seats the whole 4-player crew.
+// The team fleet, parked on the main street pointing at the city gate:
+// the RV, and ahead of it a sedan towing a camper. Each seats 4.
 export const CAR_SPAWNS: { kind: CarKind; p: Vec3; ry: number }[] = [
   { kind: 'rv', p: [0, 0, 42], ry: 0 },
+  { kind: 'caravan', p: [0, 0, 56], ry: 0 },
 ];
 
 export interface BottleState {
@@ -72,7 +75,7 @@ export interface WorldState {
 
 export type ClientMsg =
   | { t: 'hi'; name: string }
-  | { t: 'pos'; p: Vec3; ry: number; moving: boolean; working: boolean }
+  | { t: 'pos'; p: Vec3; ry: number; moving: boolean; working: boolean; tr?: number }
   | { t: 'car'; enter: boolean };
 
 export type HostMsg =

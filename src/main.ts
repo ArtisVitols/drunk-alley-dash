@@ -19,10 +19,13 @@ import { BOTTLE_GLOW, createBottleMesh } from './game/pickups';
 import {
   CarController,
   RemoteCar,
+  TRAILER_RADIUS,
   applyCarWobble,
   carRadius,
+  setTrailerAngle,
   slopePitch,
   syncCarPassengers,
+  trailerCenterXZ,
 } from './game/car';
 import { TouchControls, type ControlMode } from './game/controls';
 import { Critters } from './game/critters';
@@ -169,7 +172,14 @@ function nearCarWithSeat(): { occupied: boolean } | null {
     if (c.occupants.length >= 4) continue;
     const dx = local.pos.x - c.p[0];
     const dz = local.pos.z - c.p[2];
-    const d2 = dx * dx + dz * dz;
+    let d2 = dx * dx + dz * dz;
+    if (c.kind === 'caravan') {
+      // Standing at the camper door works too (host agrees)
+      const [tx, tz] = trailerCenterXZ(c.p[0], c.p[2], c.ry, c.tr);
+      const tdx = local.pos.x - tx;
+      const tdz = local.pos.z - tz;
+      d2 = Math.min(d2, tdx * tdx + tdz * tdz);
+    }
     if (d2 < bestD) {
       bestD = d2;
       best = { occupied: c.occupants.length > 0 };
@@ -328,7 +338,7 @@ async function createRoom(name: string, mode: SceneMode) {
     sim.removePlayer(id);
     hud.updateLobby(sim.state.players);
   };
-  room.onPos = (id, p, ry, moving, isWorking) => sim.setPos(id, p, ry, moving, isWorking);
+  room.onPos = (id, p, ry, moving, isWorking, tr) => sim.setPos(id, p, ry, moving, isWorking, tr);
   room.onCar = (id, enter) => sim.requestCar(id, enter);
   host = { room, sim };
   myId = room.myId;
@@ -354,18 +364,19 @@ async function joinRoom(code: string, name: string) {
   };
   setInterval(() => {
     const pose = currentPose();
-    room.sendPos(pose.p, pose.ry, pose.moving, pose.working);
+    room.sendPos(pose.p, pose.ry, pose.moving, pose.working, pose.tr);
   }, SEND_INTERVAL_MS);
   enterRoom(room.colorIndex, name, code, false);
 }
 
-function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean } {
+function currentPose(): { p: Vec3; ry: number; moving: boolean; working: boolean; tr?: number } {
   if (myCarId !== null && amDriver) {
     return {
       p: [carCtrl.pos.x, 0, carCtrl.pos.z],
       ry: carCtrl.ry,
       moving: Math.abs(carCtrl.speed) > 0.3,
       working: false,
+      tr: carCtrl.towing ? carCtrl.trailerRy : undefined,
     };
   }
   // Passengers' reports are ignored by the host (pinned to the car)
@@ -423,7 +434,7 @@ function applyState(state: WorldState, t: number) {
   if (myCar !== myCarId || nowDriver !== amDriver) {
     if (myCar !== myCarId) sound.playDoor();
     if (nowDriver && myCarState) {
-      carCtrl.reset(myCarState.p, myCarState.ry, myCarState.kind);
+      carCtrl.reset(myCarState.p, myCarState.ry, myCarState.kind, myCarState.tr);
     } else if (myCar === null && me) {
       // Host placed us beside the car on exit
       local.pos.set(me.p[0], 0, me.p[2]);
@@ -496,12 +507,12 @@ function applyState(state: WorldState, t: number) {
     let car = cars.get(c.id);
     if (!car) {
       car = new RemoteCar(c.kind);
-      car.snap(c.p, c.ry);
+      car.snap(c.p, c.ry, c.tr);
       scene.add(car.group);
       cars.set(c.id, car);
     }
     // The car I drive is posed from the local controller in the main loop
-    if (!(c.id === myCarId && amDriver)) car.setTarget(c.p, c.ry);
+    if (!(c.id === myCarId && amDriver)) car.setTarget(c.p, c.ry, c.tr);
     // Window/bed passengers (driver stays invisible inside)
     syncCarPassengers(car.group, c.occupants, state.players);
   }
@@ -587,12 +598,17 @@ renderer.setAnimationLoop(() => {
         turn = controls.turn;
       }
     }
-    // Other cars are round blockers; uncleared road junk blocks too
+    // Other cars are round blockers (a towed camper is a second one);
+    // uncleared road junk blocks too
     const circles: Circle[] = [];
     if (latestState) {
       for (const c of latestState.cars) {
         if (c.id === myCarId) continue;
         circles.push({ x: c.p[0], z: c.p[2], r: carRadius(c.kind) });
+        if (c.kind === 'caravan') {
+          const [tx, tz] = trailerCenterXZ(c.p[0], c.p[2], c.ry, c.tr);
+          circles.push({ x: tx, z: tz, r: TRAILER_RADIUS });
+        }
       }
     }
     if (myCarId !== null && amDriver) {
@@ -608,6 +624,7 @@ renderer.setAnimationLoop(() => {
         );
         mine.group.rotation.y = carCtrl.ry;
         mine.group.rotation.x = slopePitch(carCtrl.pos.x, carCtrl.pos.z, carCtrl.ry);
+        if (carCtrl.towing) setTrailerAngle(mine.group, carCtrl.ry, carCtrl.trailerRy);
         applyCarWobble(mine.group, t, dt, carCtrl.speed);
       }
     } else if (myCarId !== null) {
@@ -622,7 +639,7 @@ renderer.setAnimationLoop(() => {
     }
     if (host) {
       const pose = currentPose();
-      host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working);
+      host.sim.setPos(myId, pose.p, pose.ry, pose.moving, pose.working, pose.tr);
       host.sim.tick(dt);
     }
 
@@ -719,6 +736,9 @@ renderer.setAnimationLoop(() => {
   },
   get speed(): number {
     return carCtrl.speed;
+  },
+  get trailer(): number | null {
+    return myCarId !== null && amDriver && carCtrl.towing ? carCtrl.trailerRy : null;
   },
   get bottles(): [number, number][] {
     return (latestState?.bottles ?? [])
