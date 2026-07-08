@@ -12,9 +12,11 @@ import {
   roadCurve,
   sampleRoad,
 } from './road';
+import { glowTexture } from './fx';
 import {
   asphaltTextures,
   billboardTexture,
+  birdTexture,
   brickTexture,
   celestialTexture,
   cloudTexture,
@@ -100,14 +102,18 @@ export function buildScene(
         ? skyTexture([
             [0, '#02020a'],
             [0.45, '#0a0c1e'],
-            [0.62, '#141830'],
-            [1, '#1c1f38'],
+            [0.6, '#141830'],
+            [0.76, '#1e2240'],
+            [0.9, '#2a2a48'], // city glow bleeding up from the horizon
+            [1, '#38304a'],
           ])
         : skyTexture([
-            [0, '#3f6fb5'],
-            [0.42, '#7fa3d4'],
-            [0.58, '#b8cbe4'],
-            [1, '#d8e0ea'],
+            [0, '#3766b2'],
+            [0.4, '#7fa3d4'],
+            [0.56, '#b8cbe4'],
+            [0.78, '#dde3e8'],
+            [0.92, '#ecdfc8'], // warm haze band at the horizon
+            [1, '#e4d4b8'],
           ]),
       side: THREE.BackSide,
       fog: false,
@@ -138,25 +144,26 @@ export function buildScene(
 
   const cloudDrift: THREE.Sprite[] = [];
   {
-    // Clouds both day and night (dim and moonlit after dark)
-    const cloudMap = cloudTexture();
+    // Clouds both day and night (dim and moonlit after dark) — three
+    // shapes: cumulus, wisps, broad haze. Low ones warm toward the sun.
+    const cloudMaps = [cloudTexture(0), cloudTexture(1), cloudTexture(2)];
     const count = night ? 10 : 22;
     for (let i = 0; i < count; i++) {
+      const y = 60 + Math.random() * 70;
+      const low = 1 - (y - 60) / 70;
       const cloud = new THREE.Sprite(
         new THREE.SpriteMaterial({
-          map: cloudMap,
-          color: night ? 0x50597a : 0xffffff,
+          map: cloudMaps[i % 3],
+          color: night
+            ? 0x50597a
+            : new THREE.Color(1, 1 - low * 0.06, 1 - low * 0.16).getHex(),
           transparent: true,
-          opacity: night ? 0.3 : 0.6 + Math.random() * 0.3,
+          opacity: night ? 0.3 : 0.55 + Math.random() * 0.3,
           fog: false,
           depthWrite: false,
         }),
       );
-      cloud.position.set(
-        -240 + Math.random() * 480,
-        60 + Math.random() * 70,
-        -60 + Math.random() * 500,
-      );
+      cloud.position.set(-240 + Math.random() * 480, y, -60 + Math.random() * 500);
       const s = 70 + Math.random() * 90;
       cloud.scale.set(s, s * 0.42, 1);
       cloud.renderOrder = -8;
@@ -164,6 +171,24 @@ export function buildScene(
       cloudDrift.push(cloud);
     }
   }
+
+  // Day flock: little Vs of birds circling slowly (drift in updateFlicker)
+  const birdDrift: THREE.Sprite[] = [];
+  if (!night) {
+    const birdMap = birdTexture();
+    for (let i = 0; i < 6; i++) {
+      const bird = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: birdMap, transparent: true, fog: false, depthWrite: false }),
+      );
+      bird.position.set(-160 + Math.random() * 320, 46 + Math.random() * 40, Math.random() * 360);
+      const s = 7 + Math.random() * 6;
+      bird.scale.set(s, s, 1);
+      bird.renderOrder = -7;
+      root.add(bird);
+      birdDrift.push(bird);
+    }
+  }
+  let starMat: THREE.PointsMaterial | null = null;
   if (night) {
     // Starfield on the upper dome
     const starPositions: number[] = [];
@@ -179,20 +204,41 @@ export function buildScene(
     }
     const starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-    const stars = new THREE.Points(
-      starGeo,
-      new THREE.PointsMaterial({
-        color: 0xdde4f4,
-        size: 2.2,
-        sizeAttenuation: false,
-        transparent: true,
-        opacity: 0.85,
-        fog: false,
-        depthWrite: false,
-      }),
-    );
+    starMat = new THREE.PointsMaterial({
+      color: 0xdde4f4,
+      size: 2.2,
+      sizeAttenuation: false,
+      transparent: true,
+      opacity: 0.85,
+      fog: false,
+      depthWrite: false,
+    });
+    const stars = new THREE.Points(starGeo, starMat);
     stars.renderOrder = -9;
     root.add(stars);
+  } else if (renderer.shadowMap.enabled) {
+    // God-rays fanning down from the sun — three faint additive shafts
+    // (skipped in lofi, which runs without shadows)
+    const rayMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2cc,
+      transparent: true,
+      opacity: 0.05,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const sunPos = new THREE.Vector3(-150, 260, 90).add(SKY_CENTER.clone().multiplyScalar(0.5));
+    for (let i = 0; i < 3; i++) {
+      const ray = new THREE.Mesh(new THREE.PlaneGeometry(14 + i * 8, 240), rayMat);
+      ray.position.copy(sunPos);
+      ray.position.y -= 130;
+      ray.position.x += 30 + i * 42;
+      ray.lookAt(SKY_CENTER.x, 0, SKY_CENTER.z);
+      ray.rotateZ(-0.5 - i * 0.16);
+      ray.renderOrder = -7;
+      root.add(ray);
+    }
   }
 
   // Subtle image-based lighting so materials get specular life
@@ -966,6 +1012,8 @@ export function buildScene(
   };
   addNeon('BARAS', '#ff2d78', 0xff2d78, -(ALLEY_HALF_WIDTH - 0.05), -8, Math.PI / 2);
   addNeon('ALUS', '#2dffc8', 0x2dffc8, ALLEY_HALF_WIDTH - 0.05, 14, -Math.PI / 2);
+  // Late-night grease: kebab joint on the main street's east block
+  addNeon('KEBABAI', '#ffb02d', 0xffb02d, 5.95, 48, -Math.PI / 2);
 
   // Graffiti + torn posters on the walls
   const addDecal = (
@@ -1330,15 +1378,34 @@ export function buildScene(
       light.position.set(x * 0.9, 4.1, z);
       root.add(light);
       flickerItems.push({ obj: light, base: 34, phase: Math.random() * 100, neon: false });
+      // Warm pool of light baked onto the pavement under the lamp
+      const pool = new THREE.Mesh(
+        new THREE.CircleGeometry(2.6, 20),
+        new THREE.MeshBasicMaterial({
+          map: glowTexture(),
+          color: 0xff9d55,
+          transparent: true,
+          opacity: 0.22,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+        }),
+      );
+      pool.rotation.x = -Math.PI / 2;
+      pool.position.set(x * 0.82, 0.015, z);
+      root.add(pool);
     }
   }
 
   const steamVents: Vec3[] = [
     [-6.2, 0.3, -10],
     [5.6, 0.3, 20],
+    // Rooftop chimneys puffing away (Steam reused as chimney smoke)
+    [-12, 13.4, -6],
+    [14, 13.2, 10],
   ];
   const ventMat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 0.5, metalness: 0.7 });
   for (const v of steamVents) {
+    if (v[1] > 5) continue; // rooftop vents rise from chimneys, no grate
     const grate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.12, 0.9), ventMat);
     grate.position.set(v[0], 0.06, v[2]);
     root.add(grate);
@@ -1373,6 +1440,15 @@ export function buildScene(
         cloud.position.x += (0.4 + (i % 3) * 0.2) * 0.016;
         if (cloud.position.x > 260) cloud.position.x = -260;
       }
+      // Birds wheel across, bobbing as they flap
+      for (let i = 0; i < birdDrift.length; i++) {
+        const bird = birdDrift[i];
+        bird.position.x += (1.6 + (i % 3) * 0.5) * 0.016;
+        bird.position.y += Math.sin(t * 2.2 + i * 1.7) * 0.02;
+        if (bird.position.x > 200) bird.position.x = -200;
+      }
+      // Stars twinkle as one gentle shimmer
+      if (starMat) starMat.opacity = 0.78 + Math.sin(t * 1.7) * 0.07 + Math.sin(t * 4.3) * 0.04;
       for (const item of flickerItems) {
         let k: number;
         if (item.neon) {

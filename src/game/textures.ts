@@ -181,36 +181,83 @@ export function skyTexture(stops: [number, string][]) {
   return texture;
 }
 
-// Soft cumulus blob for cloud sprites.
-export function cloudTexture() {
+// Cloud sprite variants: 0 puffy cumulus, 1 wispy streak, 2 thin haze.
+export function cloudTexture(variant = 0) {
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
-  for (let i = 0; i < 14; i++) {
-    const x = 40 + Math.random() * 176;
-    const y = 45 + Math.random() * 45;
-    const r = 22 + Math.random() * 30;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, 'rgba(255,255,255,0.55)');
+  if (variant === 1) {
+    // wispy horizontal streaks
+    for (let i = 0; i < 9; i++) {
+      const y = 34 + Math.random() * 60;
+      const x = 20 + Math.random() * 60;
+      const w = 90 + Math.random() * 130;
+      const g = ctx.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(0.5, `rgba(255,255,255,${0.2 + Math.random() * 0.2})`);
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, y, w, 4 + Math.random() * 7);
+    }
+  } else if (variant === 2) {
+    // one broad faint haze blob
+    const g = ctx.createRadialGradient(128, 64, 0, 128, 64, 120);
+    g.addColorStop(0, 'rgba(255,255,255,0.22)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.fillRect(0, 0, 256, 128);
+  } else {
+    // classic cumulus: flat base, puffy top
+    for (let i = 0; i < 14; i++) {
+      const x = 40 + Math.random() * 176;
+      const y = 40 + Math.random() * 34;
+      const r = 22 + Math.random() * 30;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(255,255,255,0.55)');
+      g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - r, Math.max(20, y - r), r * 2, Math.min(r * 2, 108 - y + r));
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
-// Sun or moon: bright disc with a soft halo.
+// A loose skein of birds — dark distant Vs on a transparent card.
+export function birdTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 64;
+  const ctx = canvas.getContext('2d')!;
+  ctx.strokeStyle = 'rgba(20,22,28,0.85)';
+  ctx.lineWidth = 1.6;
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 5; i++) {
+    const x = 10 + Math.random() * 44;
+    const y = 12 + Math.random() * 40;
+    const w = 3.5 + Math.random() * 2.5;
+    ctx.beginPath();
+    ctx.moveTo(x - w, y);
+    ctx.quadraticCurveTo(x - w * 0.3, y - w * 0.9, x, y);
+    ctx.quadraticCurveTo(x + w * 0.3, y - w * 0.9, x + w, y);
+    ctx.stroke();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+// Sun or moon: bright disc with a big soft halo.
 export function celestialTexture(core: string, halo: string) {
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d')!;
   const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
   g.addColorStop(0, core);
-  g.addColorStop(0.32, core);
-  g.addColorStop(0.45, halo);
+  g.addColorStop(0.26, core);
+  g.addColorStop(0.4, halo);
+  g.addColorStop(0.7, halo.replace(/[\d.]+\)$/, '0.12)'));
   g.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 128, 128);

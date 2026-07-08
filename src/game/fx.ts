@@ -20,10 +20,19 @@ export function glowTexture(): THREE.Texture {
 }
 
 const RAIN_COUNT = 1300;
+const SPLASH_COUNT = 24;
+const SPLASH_LIFE = 0.38;
+
+interface Splash {
+  mesh: THREE.Mesh;
+  life: number; // > SPLASH_LIFE = idle
+}
 
 export class Rain {
   private points: THREE.Points;
   private positions: Float32Array;
+  private splashes: Splash[] = [];
+  private splashMat: THREE.MeshBasicMaterial;
 
   constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(RAIN_COUNT * 3);
@@ -45,26 +54,72 @@ export class Rain {
     this.points = new THREE.Points(geometry, material);
     this.points.frustumCulled = false;
     scene.add(this.points);
+
+    // Splash rings where drops meet the pavement (pooled, one material)
+    this.splashMat = new THREE.MeshBasicMaterial({
+      map: glowTexture(),
+      color: 0x9aa7c9,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+    for (let i = 0; i < SPLASH_COUNT; i++) {
+      const mesh = new THREE.Mesh(new THREE.CircleGeometry(0.5, 8), this.splashMat.clone());
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.visible = false;
+      scene.add(mesh);
+      this.splashes.push({ mesh, life: SPLASH_LIFE + 1 });
+    }
   }
 
   update(dt: number) {
     const p = this.positions;
+    let splashCursor = 0;
     for (let i = 0; i < RAIN_COUNT; i++) {
       p[i * 3 + 1] -= 13 * dt;
       p[i * 3] += 1.2 * dt; // wind
       if (p[i * 3 + 1] < 0) {
+        // Land a splash on the flat city ground (the countryside rolls,
+        // y=0 would clip into hills out there)
+        if (p[i * 3 + 2] < 120 && splashCursor < SPLASH_COUNT) {
+          const idle = this.splashes.find((s) => s.life > SPLASH_LIFE);
+          if (idle) {
+            idle.life = 0;
+            idle.mesh.visible = true;
+            idle.mesh.position.set(p[i * 3], 0.02, p[i * 3 + 2]);
+            splashCursor++;
+          }
+        }
         p[i * 3] = -58 + Math.random() * 116;
         p[i * 3 + 1] = 13 + Math.random() * 3;
         p[i * 3 + 2] = -30 + Math.random() * 485;
       }
     }
     this.points.geometry.attributes.position.needsUpdate = true;
+    for (const splash of this.splashes) {
+      if (splash.life > SPLASH_LIFE) continue;
+      splash.life += dt;
+      const k = splash.life / SPLASH_LIFE;
+      if (k >= 1) {
+        splash.mesh.visible = false;
+        continue;
+      }
+      const s = 0.25 + k * 0.9;
+      splash.mesh.scale.set(s, s, 1);
+      (splash.mesh.material as THREE.MeshBasicMaterial).opacity = 0.3 * (1 - k);
+    }
   }
 
   dispose() {
     this.scene.remove(this.points);
     this.points.geometry.dispose();
     (this.points.material as THREE.Material).dispose();
+    for (const splash of this.splashes) {
+      this.scene.remove(splash.mesh);
+      splash.mesh.geometry.dispose();
+      (splash.mesh.material as THREE.Material).dispose();
+    }
+    this.splashMat.dispose();
   }
 }
 
@@ -79,10 +134,16 @@ export class Steam {
 
   constructor(private scene: THREE.Scene, private origin: Vec3, count = 6) {
     for (let i = 0; i < count; i++) {
+      // Slight grey-brown tint variation so plumes don't look cloned
+      const tint = new THREE.Color(0x8a8fa0).offsetHSL(
+        (Math.random() - 0.5) * 0.05,
+        (Math.random() - 0.5) * 0.06,
+        (Math.random() - 0.5) * 0.05,
+      );
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
           map: glowTexture(),
-          color: 0x8a8fa0,
+          color: tint,
           transparent: true,
           opacity: 0,
           depthWrite: false,
