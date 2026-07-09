@@ -47,12 +47,16 @@ a00b27b8; recreate from this outline if gone:
    on coarse-pointer devices). Read its center from
    `getBoundingClientRect()`, then `touchStart(cx, cy)` + `touchMove` from
    there — up = walk, sideways = turn; touches must START within ~130 px of
-   the ring center or they're ignored.
+   the ring center or they're ignored. Any touch STARTING outside that
+   radius swipes the camera instead (horizontal drag → `__dad.camOrbit`
+   yaw offset, drag right = look right; holds while standing, eases back
+   to 0 while moving) — so a stray touch-drag in a test WILL rotate the
+   view, on purpose.
 5. Scoring: read `window.__dad` (debug handle: `pos`, `ry`, `car`, `driver`,
    `speed`, `trailer`, `bottles`, `cars`, `surface`, `alt`, `phase`,
-   `obstacles`, `bums`, `roadkill`, `critterPos`, `drawCalls`, `hit()`,
-   `roadPoint(t)`, plus `teleport(x, z, ry?)` and `spawnBum(x, z)` that only
-   work with `?dev=1` in the URL) and steer W + A/D toward the nearest bottle
+   `obstacles`, `bums`, `roadkill`, `critterPos`, `drawCalls`, `camOrbit`,
+   `hit()`, `roadPoint(t)`, plus `teleport(x, z, ry?)` and `spawnBum(x, z)`
+   that only work with `?dev=1` in the URL) and steer W + A/D toward the nearest bottle
    until `.srow.me .pts` > 0; check the other browser's scoreboard agrees.
    Blind wandering no longer works — the map is alley + city and too big.
    There is no round timer; scores only ever climb.
