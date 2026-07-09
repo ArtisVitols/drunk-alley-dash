@@ -673,17 +673,18 @@ export function buildScene(
     }),
   );
   const roadMud = mudTextures(1, 1);
-  buildRibbon(
-    MUD_START_T - 0.005,
-    1,
-    new THREE.MeshStandardMaterial({
-      map: roadMud.map,
-      bumpMap: roadMud.bumpMap,
-      bumpScale: 0.7,
-      roughness: 0.75, // wet sheen
-      side: THREE.DoubleSide,
-    }),
-  );
+  const mudMat = new THREE.MeshStandardMaterial({
+    map: roadMud.map,
+    bumpMap: roadMud.bumpMap,
+    bumpScale: 0.7,
+    roughness: 0.75, // wet sheen
+    side: THREE.DoubleSide,
+  });
+  // The mud stretch parts at the river — the water (and the bridge,
+  // once built) fills the gap
+  const RIVER_GAP = 0.0065; // ≈ ±5.7 m of the 880 m road
+  buildRibbon(MUD_START_T - 0.005, RIVER_T - RIVER_GAP, mudMat);
+  buildRibbon(RIVER_T + RIVER_GAP, 1, mudMat);
 
   // ——— The river: a broad water band sliding under the road at the
   // bridge site. Purely visual — the unbuilt bridge is the blocker.
@@ -700,8 +701,10 @@ export function buildScene(
         opacity: 0.92,
       }),
     );
+    // rotation.z = +angle lays the water's long axis along the road's
+    // NORMAL — the river crosses the road perpendicular, as rivers do
     water.rotation.x = -Math.PI / 2;
-    water.rotation.z = -site.angle;
+    water.rotation.z = site.angle;
     water.position.set(site.p[0], elevation(site.p[0], site.p[2]) - 0.25, site.p[2]);
     root.add(water);
     // Reedy banks: darker mud strips along both edges of the water
@@ -709,7 +712,7 @@ export function buildScene(
     for (const side of [-1, 1]) {
       const bank = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_HALF_WIDTH * 2 + 20, 1.6), bankMat);
       bank.rotation.x = -Math.PI / 2;
-      bank.rotation.z = -site.angle;
+      bank.rotation.z = site.angle;
       const ox = Math.sin(site.angle) * 6.2 * side;
       const oz = Math.cos(site.angle) * 6.2 * side;
       bank.position.set(

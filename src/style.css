@@ -21,14 +21,17 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Fixed joystick: always on screen during play, right side, parked
+   above the car button so the thumb never hunts for it */
 #stick {
   position: fixed;
+  right: 22px;
+  bottom: max(126px, calc(env(safe-area-inset-bottom) + 118px));
   width: 124px;
   height: 124px;
   border-radius: 50%;
   border: 2px solid rgba(255, 176, 102, 0.5);
   background: rgba(12, 12, 20, 0.35);
-  transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 5;
 }

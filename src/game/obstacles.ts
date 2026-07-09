@@ -146,25 +146,29 @@ function buildMesh(kind: RoadObstacleKind): THREE.Group {
     const built = new THREE.Group();
     built.name = 'built';
     built.visible = false;
-    // Deck of cross planks over two beams, low side rails
-    for (const bz of [-1.1, 1.1]) {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(9.4, 0.22, 0.3), darkWood);
-      beam.position.set(0, 0.25, bz);
+    // The finished deck runs ALONG the road (the group's local Z is the
+    // road direction), spanning the river, wide enough for the RV, with
+    // rails outside the wheel track. Kept low so cars roll over it.
+    const DECK_LEN = 12.5;
+    const DECK_W = 4.6;
+    for (const bx of [-1.9, 1.9]) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, DECK_LEN), darkWood);
+      beam.position.set(bx, 0.08, 0);
       built.add(beam);
     }
-    for (let i = 0; i < 12; i++) {
-      const board = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 2.9), plank);
-      board.position.set(-4.35 + i * 0.79, 0.41, 0);
-      board.rotation.y = (Math.random() - 0.5) * 0.05;
+    for (let i = 0; i < 15; i++) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(DECK_W, 0.08, 0.72), plank);
+      board.position.set(0, 0.18, -DECK_LEN / 2 + 0.45 + i * 0.81);
+      board.rotation.y = (Math.random() - 0.5) * 0.04;
       built.add(board);
     }
-    for (const bz of [-1.42, 1.42]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.09, 0.09), darkWood);
-      rail.position.set(0, 1.0, bz);
+    for (const bx of [-DECK_W / 2 - 0.1, DECK_W / 2 + 0.1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, DECK_LEN - 0.4), darkWood);
+      rail.position.set(bx, 0.95, 0);
       built.add(rail);
-      for (const px of [-4.2, -1.4, 1.4, 4.2]) {
-        const baluster = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.65, 0.09), darkWood);
-        baluster.position.set(px, 0.7, bz);
+      for (const pz of [-5.4, -2.7, 0, 2.7, 5.4]) {
+        const baluster = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.75, 0.09), darkWood);
+        baluster.position.set(bx, 0.55, pz);
         built.add(baluster);
       }
     }

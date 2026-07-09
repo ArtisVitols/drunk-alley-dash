@@ -1,23 +1,15 @@
-// Mobile touch controls: one floating joystick. Drag anywhere on the
-// canvas — up walks / accelerates, sideways turns. The conditioning
-// pipeline matters more than the scheme: a radial deadzone (thumbs
+// Mobile touch controls: one FIXED joystick anchored on the right side
+// of the screen, above the car button — always visible during play, so
+// the thumb always knows where home is. Up walks / accelerates,
+// sideways turns. The conditioning pipeline: a radial deadzone (thumbs
 // never rest perfectly centered), an expo curve on the turn axis (fine
-// steering near center, full rate at the edge), per-frame smoothing
-// toward the target axes (kills pointer-event jitter), and a joystick
-// base that follows the thumb when it overshoots the ring, so
-// reversing direction responds instantly instead of after a long drag.
+// steering near center, full rate at the edge), and per-frame smoothing
+// toward the target axes (kills pointer-event jitter).
 
-const RADIUS = 70; // px of thumb travel for full deflection
+const RADIUS = 62; // px of thumb travel for full deflection
+const GRAB_RADIUS = 130; // touches starting this close to center grab the stick
 const DEADZONE = 0.14;
 const SMOOTH_TAU = 0.075; // seconds to ~63% of a step change
-
-interface Finger {
-  id: number;
-  baseX: number;
-  baseY: number;
-  x: number;
-  y: number;
-}
 
 // Fine control near center, full authority at the rim
 const expo = (v: number) => v * (0.45 + 0.55 * v * v);
@@ -27,76 +19,79 @@ export class TouchControls {
   fwd = 0;
   turn = 0;
 
-  private move: Finger | null = null;
+  private pointerId: number | null = null;
+  private touchX = 0;
+  private touchY = 0;
 
   private readonly stick = document.getElementById('stick')!;
   private readonly stickKnob = document.getElementById('stick-knob')!;
+  private readonly coarse = window.matchMedia('(pointer: coarse)').matches;
 
   constructor(canvas: HTMLCanvasElement, private enabled: () => boolean) {
     // Phone-appropriate help line replaces the keyboard one
-    if (window.matchMedia('(pointer: coarse)').matches) {
+    if (this.coarse) {
       const help = document.getElementById('help');
       if (help) {
         help.innerHTML =
-          'Drag anywhere: up walks, sideways turns &nbsp;·&nbsp; 🏏 whacks bums &nbsp; 🚗 for cars ' +
+          'Right stick: up walks, sideways turns &nbsp;·&nbsp; 🏏 whacks bums &nbsp; 🚗 for cars ' +
           '&nbsp; stand at junk to clear &nbsp;·&nbsp; 🍺 +1 🍷 +2 🥃 +3';
       }
     }
     canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch' || !this.enabled() || this.move) return;
-      this.move = {
-        id: e.pointerId,
-        baseX: e.clientX,
-        baseY: e.clientY,
-        x: e.clientX,
-        y: e.clientY,
-      };
+      if (e.pointerType !== 'touch' || !this.enabled() || this.pointerId !== null) return;
+      const c = this.center();
+      if (Math.hypot(e.clientX - c.x, e.clientY - c.y) > GRAB_RADIUS) return;
+      this.pointerId = e.pointerId;
+      this.touchX = e.clientX;
+      this.touchY = e.clientY;
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
     canvas.addEventListener('pointermove', (e) => {
-      const f = this.move;
-      if (!f || f.id !== e.pointerId) return;
-      f.x = e.clientX;
-      f.y = e.clientY;
-      // Base follows the thumb past the rim: deflection stays saturated
-      // but direction reversals bite immediately
-      const dx = f.x - f.baseX;
-      const dy = f.y - f.baseY;
-      const len = Math.hypot(dx, dy);
-      if (len > RADIUS) {
-        f.baseX += (dx / len) * (len - RADIUS);
-        f.baseY += (dy / len) * (len - RADIUS);
-      }
+      if (this.pointerId !== e.pointerId) return;
+      this.touchX = e.clientX;
+      this.touchY = e.clientY;
     });
     const end = (e: PointerEvent) => {
-      if (this.move?.id === e.pointerId) this.move = null;
+      if (this.pointerId === e.pointerId) this.pointerId = null;
     };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
   }
 
-  get active(): boolean {
-    return this.move !== null || Math.abs(this.fwd) + Math.abs(this.turn) > 0.02;
+  private center(): { x: number; y: number } {
+    const rect = this.stick.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
   }
 
-  // Radial-deadzoned deflection in [-1, 1] per axis (screen space)
-  private deflect(f: Finger): { dx: number; dy: number } {
-    const dx = (f.x - f.baseX) / RADIUS;
-    const dy = (f.y - f.baseY) / RADIUS;
-    const len = Math.hypot(dx, dy);
-    if (len < DEADZONE) return { dx: 0, dy: 0 };
-    const mag = Math.min(1, (len - DEADZONE) / (1 - DEADZONE));
-    return { dx: (dx / len) * mag, dy: (dy / len) * mag };
+  get active(): boolean {
+    return this.pointerId !== null || Math.abs(this.fwd) + Math.abs(this.turn) > 0.02;
   }
 
   sample(dt: number): void {
+    // The ring lives on screen whenever a coarse-pointer player is in
+    // the game — it never pops in and out with touches
+    this.stick.classList.toggle('hidden', !this.coarse || !this.enabled());
+
     let fwdT = 0;
     let turnT = 0;
-    if (this.move) {
-      const d = this.deflect(this.move);
-      fwdT = -d.dy;
-      turnT = expo(-d.dx);
+    let knobX = 0;
+    let knobY = 0;
+    if (this.pointerId !== null) {
+      const c = this.center();
+      const rx = (this.touchX - c.x) / RADIUS;
+      const ry = (this.touchY - c.y) / RADIUS;
+      const len = Math.hypot(rx, ry);
+      const clamped = Math.min(1, len);
+      if (len > 1e-4) {
+        knobX = (rx / len) * clamped;
+        knobY = (ry / len) * clamped;
+        if (len >= DEADZONE) {
+          const mag = (clamped - DEADZONE) / (1 - DEADZONE);
+          fwdT = -(ry / len) * mag;
+          turnT = expo(-(rx / len) * mag);
+        }
+      }
     }
 
     const k = 1 - Math.exp(-dt / SMOOTH_TAU);
@@ -105,25 +100,6 @@ export class TouchControls {
     if (Math.abs(this.fwd) < 0.01 && fwdT === 0) this.fwd = 0;
     if (Math.abs(this.turn) < 0.01 && turnT === 0) this.turn = 0;
 
-    this.updateStickDOM();
-  }
-
-  private updateStickDOM() {
-    const f = this.move;
-    if (!f) {
-      this.stick.classList.add('hidden');
-      return;
-    }
-    this.stick.classList.remove('hidden');
-    this.stick.style.left = `${f.baseX}px`;
-    this.stick.style.top = `${f.baseY}px`;
-    let dx = f.x - f.baseX;
-    let dy = f.y - f.baseY;
-    const len = Math.hypot(dx, dy);
-    if (len > RADIUS) {
-      dx *= RADIUS / len;
-      dy *= RADIUS / len;
-    }
-    this.stickKnob.style.transform = `translate(calc(${dx}px - 50%), calc(${dy}px - 50%))`;
+    this.stickKnob.style.transform = `translate(calc(${knobX * RADIUS}px - 50%), calc(${knobY * RADIUS}px - 50%))`;
   }
 }
