@@ -80,13 +80,14 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   files); context unlocks on first gesture. Engine loop follows the smoothed
   RPM from `src/game/gauges.ts` (canvas dials, shown while aboard). Ambient
   critters (`src/game/critters.ts`) are client-side only — never synced.
-- **Touch controls** (`src/game/controls.ts`): one floating joystick (drag
-  anywhere: up walks, sideways turns) with deadzone + expo + smoothing + a
-  base that follows the thumb past the rim. Touch overrides keyboard while
-  `controls.active`.
+- **Touch controls** (`src/game/controls.ts`): one FIXED joystick ring on the
+  right side above the 🚗 button (CSS-anchored `#stick`), always visible
+  during play on coarse-pointer devices — touches starting within
+  `GRAB_RADIUS` of its center grab it; deadzone + expo + smoothing. Touch
+  overrides keyboard while `controls.active`.
 - **Bums** (`src/net/network.ts` `BumState`, host AI in `host.ts`, meshes in
   `src/game/bums.ts`): host-simulated stinky men/women spawn in waves
-  (first ~8 s in, then every ~18-32 s, max 6), shamble to the nearest
+  (first ~16 s in, then every ~36-64 s, max 6 roaming), shamble to the nearest
   point of a vehicle (cab or camper) and cling banging on the door — a
   clung-to vehicle can't accelerate (driver's client zeroes throttle).
   Three stick hits → `mode: 'flee'`, they sprint off screaming and despawn.

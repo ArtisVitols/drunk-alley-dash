@@ -19,22 +19,24 @@ game server.
 One player clicks **Create room** and shares the 4-letter code; up to 3 friends
 enter it and **Join**. The host starts the round (solo works too).
 
-Controls: **W/S** move forward/back, **A/D** turn (arrows work too).
-On **phones/tablets** (the primary way to play) there are three touch
-schemes — a small button in the top-right corner cycles through them and
-your choice is remembered:
-
-- **🕹 Joystick** — drag anywhere and a stick appears under your thumb:
-  up/down walks or drives, left/right turns.
-- **👉 Point to go** — drag in the direction you want to go (relative to
-  the camera); your drunk turns and heads that way himself. Driving, the
-  RV steers toward where you point — point behind it to reverse.
-- **🎮 Two thumbs** — left half of the screen is gas (slide up/down),
-  right half is steering (slide sideways). Best for the road trip.
-
-All schemes ignore tiny thumb wobble (deadzone), smooth the input, and
-give finer steering near the stick's center.
+Controls: **W/S** move forward/back, **A/D** turn (arrows work too), **E**
+hops in/out of vehicles, **SPACE** (or **F**) swings your stick. On
+**phones/tablets** (the primary way to play) a joystick ring sits on the
+right side of the screen, always visible above the 🚗 button: up/down walks
+or drives, left/right turns. It ignores tiny thumb wobble (deadzone),
+smooths the input, and gives finer steering near the center. The 🏏 **Whack**
+button lives under your left thumb whenever you're on foot.
 Walking drunk means your heading drifts on its own — deal with it.
+
+**The bums (bomžai):** waves of stinky drifters shamble out of the shadows
+and cling to your vehicles, banging on the doors — a besieged vehicle can't
+drive until someone gets out and beats them off. Every drunk carries a
+whacking stick: three hits and a bum sprints away screaming. It's a team
+job — anyone's hits count.
+
+**Roadkill:** the stray cats, dogs, squirrels and raccoons wandering the
+streets and the country road get flattened if you drive over them fast
+enough — the camper counts too. No points, just consequences.
 
 **The rides:** the alley opens onto a small city — a few blocks of streets —
 and on the main street waits the team's fleet: a beat-up cab-over **RV**, and
@@ -60,16 +62,27 @@ button. Stray cats, dogs, squirrels and raccoons dart across the streets and
 the country road, and the alley has its rats.
 
 **The road to ROUTE 65 (co-op):** the city's north gate opens onto a winding
-country road that **climbs and dips over rolling hills** — asphalt at first,
-then a sandy track through green fields. A dense **wall of pines** hems the
-road in on both sides: there is no driving around anything. The road is
-blocked by junk — roadblocks, fallen logs, boulder piles — so the team hops
-out and **stands at the obstacle**; your drunk gets to work automatically and
-a progress panel fills, much faster together (solo ~15 s, full crew ~4 s).
-Sand makes the drunk swerving worse, and a distance readout counts down to
-the **ROUTE 65** junction. Get the RV there with someone aboard and the run
-is won — the host can start a fresh run from the victory screen. Bottles are
-strewn along the route, so keep gathering.
+**~880 m** country road that **climbs and dips over rolling hills**, the
+surface degrading as you go — asphalt, then a sandy track, then loose
+gravel, and finally wet mud past the river, each slower and more swervy than
+the last. A dense **wall of pines** hems the road in on both sides: there is
+no driving around anything. The jobs along the way:
+
+- **Junk** — roadblocks, fallen logs, boulder piles: hop out and **stand at
+  the obstacle**; your drunk gets to work automatically and a progress panel
+  fills, much faster together (solo ~15 s, full crew ~4 s).
+- **Dead animals** — a moose and boars sprawled across the lane (crows
+  included); drag them aside the same way.
+- **A bum camp** squatting on the road around a barrel fire — no shovel work
+  here: each of the three squatters takes **three stick hits** before he
+  runs, and the road only opens when they're all gone.
+- **The river** — the team must **build a plank bridge** (same stand-and-work
+  mechanic); the finished deck runs along the road, wide enough for the RV.
+
+A distance readout counts down to the **ROUTE 65** junction. Get the RV
+there with someone aboard and the run is won — the host can start a fresh
+run from the victory screen. Bottles are strewn along the route, so keep
+gathering.
 
 ## Develop
 

@@ -38,21 +38,24 @@ a00b27b8; recreate from this outline if gone:
    unhides (PeerJS cloud broker — needs internet, takes a few seconds).
 2. Browser B: set `#code-input` to that code, click `#join-btn`; both
    `#player-list`s show 2 entries.
-3. A clicks `#start-btn`; both pages: `#hud` unhides, `#timer` shows `2:00`,
-   `#scores .srow` count is 2.
+3. A clicks `#start-btn`; both pages: `#hud` unhides, `#scores .srow` count
+   is 2 (no round timer exists).
 4. Movement: `window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW'}))`
    (+ matching keyup). Real key events also work; inputs must not be focused.
-   Mobile: `page.emulate(KnownDevices['Pixel 5'])`, then
-   `page.touchscreen.touchStart(x,y)` / `touchMove` / `touchEnd` drives the
-   floating joystick (`#stick` unhides while dragging); drag up = walk,
-   sideways = turn. A full phone-joins-desktop script outline lived at
-   `scratchpad/mobile.mjs` in session a00b27b8.
+   Mobile: `page.emulate(KnownDevices['Pixel 5'])`; the joystick is a FIXED
+   ring (`#stick`, right side above the 🚗 button, always visible during play
+   on coarse-pointer devices). Read its center from
+   `getBoundingClientRect()`, then `touchStart(cx, cy)` + `touchMove` from
+   there — up = walk, sideways = turn; touches must START within ~130 px of
+   the ring center or they're ignored.
 5. Scoring: read `window.__dad` (debug handle: `pos`, `ry`, `car`, `driver`,
-   `speed`, `bottles`, `cars`, plus `teleport(x, z)` that only works with
-   `?dev=1` in the URL) and steer W + A/D toward the nearest bottle until
-   `.srow.me .pts` > 0; check the other browser's scoreboard agrees. Blind
-   wandering no longer works — the map is alley + city and too big. There is
-   no round timer; scores only ever climb.
+   `speed`, `trailer`, `bottles`, `cars`, `surface`, `alt`, `phase`,
+   `obstacles`, `bums`, `roadkill`, `critterPos`, `drawCalls`, `hit()`,
+   `roadPoint(t)`, plus `teleport(x, z, ry?)` and `spawnBum(x, z)` that only
+   work with `?dev=1` in the URL) and steer W + A/D toward the nearest bottle
+   until `.srow.me .pts` > 0; check the other browser's scoreboard agrees.
+   Blind wandering no longer works — the map is alley + city and too big.
+   There is no round timer; scores only ever climb.
 6. The fleet (CAR_SPAWNS in `src/net/network.ts`): the RV at (0, 42) and the
    sedan+camper 'caravan' at (0, 56), both facing the gate; RV radius 1.85 —
    teleport ≥2.4 m from center or the pushout
