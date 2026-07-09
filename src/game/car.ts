@@ -54,7 +54,7 @@ export function trailerCenterXZ(
   return [hx - Math.sin(tr) * TRAILER_BODY, hz - Math.cos(tr) * TRAILER_BODY];
 }
 
-export type Surface = 'city' | 'asphalt' | 'sand' | 'grass';
+export type Surface = 'city' | 'asphalt' | 'sand' | 'gravel' | 'mud' | 'grass';
 
 interface Slot {
   anchor: THREE.Group;
@@ -582,8 +582,11 @@ export class CarController {
     surface: Surface = 'city',
   ) {
     const s = this.stats;
-    // Grass bogs the car down; keep to the road
-    const maxSpeed = surface === 'grass' ? s.max * 0.35 : s.max;
+    // Loose surfaces slow the ride: grass bogs it right down, mud is a
+    // slog, gravel just shaves the top end
+    const maxSpeed =
+      s.max *
+      (surface === 'grass' ? 0.35 : surface === 'mud' ? 0.55 : surface === 'gravel' ? 0.82 : 1);
     this.speed += throttle * s.accel * dt;
     this.speed -= this.speed * DRAG * dt;
     this.speed = Math.min(maxSpeed, Math.max(-s.reverse, this.speed));
@@ -593,9 +596,10 @@ export class CarController {
     // Steering only bites when rolling; reversing flips it like a real car
     this.ry += steer * s.turn * grip * Math.sign(this.speed || 1) * dt;
     // Drunk at the wheel: the car pulls side to side on its own —
-    // worse on loose sand
+    // worse on loose sand and gravel, worst wallowing through mud
     this.swayClock += dt;
-    const sway = s.sway * (surface === 'sand' ? 1.35 : 1);
+    const sway =
+      s.sway * (surface === 'sand' ? 1.35 : surface === 'gravel' ? 1.2 : surface === 'mud' ? 1.5 : 1);
     this.ry += Math.sin(this.swayClock * 1.4) * sway * grip * dt;
 
     this.pos.x += Math.sin(this.ry) * this.speed * dt;

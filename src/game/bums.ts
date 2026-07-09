@@ -275,6 +275,19 @@ export class Bums {
           this.sound.playBang();
           bum.bangIn = 0.5 + Math.random() * 0.6;
         }
+      } else if (bum.mode === 'block') {
+        // Holding the road: feet planted, arms crossed-ish, shaking a
+        // fist now and then — not going anywhere
+        const sway = Math.sin(t * 1.6 + p);
+        const shake = Math.max(0, Math.sin(t * 0.7 + p)) * Math.sin(t * 9 + p);
+        r.legL.rotation.x = 0.12;
+        r.legR.rotation.x = -0.12;
+        r.armL.rotation.x = -1.5;
+        r.armR.rotation.x = -1.9 + shake * 0.3;
+        r.body.rotation.x = -0.05;
+        r.body.position.y = 0;
+        r.body.rotation.z = sway * 0.06;
+        r.head.rotation.z = sway * 0.1;
       } else {
         const speed = bum.mode === 'flee' ? 16 : 7;
         const swing = Math.sin(t * speed + p);

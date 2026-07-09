@@ -38,12 +38,25 @@ export interface BumState {
   p: Vec3;
   ry: number;
   hp: number;
-  mode: 'walk' | 'bang' | 'flee';
-  // Target vehicle id (the one they're trying to board)
+  // block = squatting on the road at a bum camp, not chasing vehicles
+  mode: 'walk' | 'bang' | 'flee' | 'block';
+  // Target vehicle id (the one they're trying to board); 0 for blockers
   car: number;
+  // Owning bumcamp obstacle id (block mode only)
+  site?: number;
 }
 
-export type RoadObstacleKind = 'log' | 'boulders' | 'roadblock' | 'junk';
+// carcass = dead animals to drag off; bridge = river crossing that the
+// team BUILDS (cleared = bridge in place); bumcamp = road bums that
+// must be whacked away with sticks (progress = bums beaten)
+export type RoadObstacleKind =
+  | 'log'
+  | 'boulders'
+  | 'roadblock'
+  | 'junk'
+  | 'carcass'
+  | 'bridge'
+  | 'bumcamp';
 
 export interface RoadObstacleState {
   id: number;

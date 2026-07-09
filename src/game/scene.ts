@@ -6,6 +6,9 @@ import {
   ASPHALT_END_T,
   FINISH,
   GATE_Z,
+  GRAVEL_START_T,
+  MUD_START_T,
+  RIVER_T,
   ROAD_HALF_WIDTH,
   distanceToRoad,
   elevation,
@@ -22,6 +25,8 @@ import {
   cloudTexture,
   facadeTexture,
   grassTexture,
+  gravelTextures,
+  mudTextures,
   neonTexture,
   sandTextures,
   signTexture,
@@ -72,9 +77,11 @@ const CITY_BLOCKS: { x: number; z: number; h: number }[] = [
 ];
 const BLOCK_HALF = 14;
 
-// Past the city gate: countryside with the winding road to ROUTE 65.
+// Past the city gate: countryside with the winding road to ROUTE 65 —
+// extended past the old junction with the river, the bum camp and the
+// carcass sites, ending at z ~843.
 const WORLD_HALF_WIDTH = 60;
-const WORLD_MAX_Z = 458;
+const WORLD_MAX_Z = 858;
 
 // Builds the whole alley for one time-of-day into a disposable group,
 // so the host's day/night choice can swap the environment live while
@@ -94,9 +101,9 @@ export function buildScene(
     : new THREE.FogExp2(0xa8b8cc, 0.0085); // haze layers the distant hills
 
   // ——— Sky: gradient dome + sun/clouds (day) or stars/moon (night) ———
-  const SKY_CENTER = new THREE.Vector3(0, 0, 200);
+  const SKY_CENTER = new THREE.Vector3(0, 0, 360);
   const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(560, 24, 12),
+    new THREE.SphereGeometry(720, 24, 12),
     new THREE.MeshBasicMaterial({
       map: night
         ? skyTexture([
@@ -163,7 +170,7 @@ export function buildScene(
           depthWrite: false,
         }),
       );
-      cloud.position.set(-240 + Math.random() * 480, y, -60 + Math.random() * 500);
+      cloud.position.set(-240 + Math.random() * 480, y, -60 + Math.random() * 880);
       const s = 70 + Math.random() * 90;
       cloud.scale.set(s, s * 0.42, 1);
       cloud.renderOrder = -8;
@@ -180,7 +187,7 @@ export function buildScene(
       const bird = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: birdMap, transparent: true, fog: false, depthWrite: false }),
       );
-      bird.position.set(-160 + Math.random() * 320, 46 + Math.random() * 40, Math.random() * 360);
+      bird.position.set(-160 + Math.random() * 320, 46 + Math.random() * 40, Math.random() * 700);
       const s = 7 + Math.random() * 6;
       bird.scale.set(s, s, 1);
       bird.renderOrder = -7;
@@ -195,7 +202,7 @@ export function buildScene(
     for (let i = 0; i < 550; i++) {
       const az = Math.random() * Math.PI * 2;
       const alt = 0.12 + Math.random() * (Math.PI / 2 - 0.14);
-      const r = 520;
+      const r = 675;
       starPositions.push(
         SKY_CENTER.x + r * Math.cos(alt) * Math.cos(az),
         r * Math.sin(alt),
@@ -333,7 +340,7 @@ export function buildScene(
     const skyTex = skylineTexture(night);
     skyTex.repeat.set(8, 1);
     const ring = new THREE.Mesh(
-      new THREE.CylinderGeometry(500, 500, 36, 48, 1, true, 0.5, Math.PI * 2 - 1.0),
+      new THREE.CylinderGeometry(640, 640, 44, 48, 1, true, 0.5, Math.PI * 2 - 1.0),
       new THREE.MeshBasicMaterial({
         map: skyTex,
         transparent: true,
@@ -343,7 +350,7 @@ export function buildScene(
         depthWrite: false,
       }),
     );
-    ring.position.y = 14;
+    ring.position.set(SKY_CENTER.x, 14, SKY_CENTER.z);
     ring.renderOrder = -8;
     root.add(ring);
   }
@@ -560,7 +567,7 @@ export function buildScene(
     WORLD_HALF_WIDTH * 2,
     WORLD_MAX_Z - GATE_Z + 10,
     64,
-    180,
+    330, // ~2.2 m rows — matches the old density over the longer world
   );
   grassGeo.rotateX(-Math.PI / 2);
   grassGeo.translate(0, 0, (GATE_Z - 4 + WORLD_MAX_Z + 6) / 2);
@@ -644,7 +651,7 @@ export function buildScene(
   const roadSand = sandTextures(1, 1);
   buildRibbon(
     ASPHALT_END_T - 0.005,
-    1,
+    GRAVEL_START_T + 0.005,
     new THREE.MeshStandardMaterial({
       map: roadSand.map,
       bumpMap: roadSand.bumpMap,
@@ -653,6 +660,87 @@ export function buildScene(
       side: THREE.DoubleSide,
     }),
   );
+  const roadGravel = gravelTextures(1, 1);
+  buildRibbon(
+    GRAVEL_START_T - 0.005,
+    MUD_START_T + 0.005,
+    new THREE.MeshStandardMaterial({
+      map: roadGravel.map,
+      bumpMap: roadGravel.bumpMap,
+      bumpScale: 0.6,
+      roughness: 0.95,
+      side: THREE.DoubleSide,
+    }),
+  );
+  const roadMud = mudTextures(1, 1);
+  buildRibbon(
+    MUD_START_T - 0.005,
+    1,
+    new THREE.MeshStandardMaterial({
+      map: roadMud.map,
+      bumpMap: roadMud.bumpMap,
+      bumpScale: 0.7,
+      roughness: 0.75, // wet sheen
+      side: THREE.DoubleSide,
+    }),
+  );
+
+  // ——— The river: a broad water band sliding under the road at the
+  // bridge site. Purely visual — the unbuilt bridge is the blocker.
+  {
+    const site = sampleRoad(RIVER_T);
+    const water = new THREE.Mesh(
+      new THREE.PlaneGeometry(WORLD_HALF_WIDTH * 2 + 20, 11),
+      new THREE.MeshStandardMaterial({
+        color: night ? 0x0e1a26 : 0x2e5a70,
+        roughness: 0.25,
+        metalness: 0.1,
+        envMapIntensity: night ? 1.1 : 0.8,
+        transparent: true,
+        opacity: 0.92,
+      }),
+    );
+    water.rotation.x = -Math.PI / 2;
+    water.rotation.z = -site.angle;
+    water.position.set(site.p[0], elevation(site.p[0], site.p[2]) - 0.25, site.p[2]);
+    root.add(water);
+    // Reedy banks: darker mud strips along both edges of the water
+    const bankMat = new THREE.MeshStandardMaterial({ color: 0x3a3226, roughness: 0.95 });
+    for (const side of [-1, 1]) {
+      const bank = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_HALF_WIDTH * 2 + 20, 1.6), bankMat);
+      bank.rotation.x = -Math.PI / 2;
+      bank.rotation.z = -site.angle;
+      const ox = Math.sin(site.angle) * 6.2 * side;
+      const oz = Math.cos(site.angle) * 6.2 * side;
+      bank.position.set(
+        site.p[0] + ox,
+        elevation(site.p[0], site.p[2]) - 0.12,
+        site.p[2] + oz,
+      );
+      root.add(bank);
+    }
+    // Cattail reeds merged into one mesh, clumped near the banks
+    const reedGeos: THREE.BufferGeometry[] = [];
+    for (let i = 0; i < 60; i++) {
+      const along = (Math.random() - 0.5) * 90;
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const off = (5.6 + Math.random() * 2.4) * side;
+      const rx = site.p[0] + Math.cos(site.angle) * along + Math.sin(site.angle) * off;
+      const rz = site.p[2] - Math.sin(site.angle) * along + Math.cos(site.angle) * off;
+      if (distanceToRoad(rx, rz) < ROAD_HALF_WIDTH + 1) continue; // keep the lane clear
+      const h = 0.8 + Math.random() * 0.7;
+      const reed = new THREE.CylinderGeometry(0.02, 0.035, h, 4);
+      reed.translate(rx, elevation(rx, rz) + h / 2 - 0.15, rz);
+      reedGeos.push(reed);
+    }
+    if (reedGeos.length) {
+      const reeds = new THREE.Mesh(
+        mergeGeometries(reedGeos),
+        new THREE.MeshStandardMaterial({ color: 0x4a5a30, roughness: 0.95 }),
+      );
+      root.add(reeds);
+    }
+  }
 
   // Pines, bushes and rocks (merged for draw calls), all planted on
   // the terrain. addPine writes into the shared geometry arrays.

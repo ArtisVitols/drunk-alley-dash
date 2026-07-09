@@ -47,14 +47,20 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   the camper too (host + client both check the trailer circle).
 - **Road trip** (`src/game/road.ts` = shared curve/surface/elevation math,
   `src/game/obstacles.ts` = meshes/AABBs): the city gate opens onto a winding
-  road over hills to the ROUTE 65 finish. Terrain height = `elevation(x, z)`
-  (flat in city, sine hills beyond; y is always derived client-side — the
-  network still sends y = 0). `clampToRoadCorridor` in `collideCircle` walls
-  everyone into the road corridor past the gate (forest wall) so the RV can't
-  drive around the 5 host-owned obstacles; on-foot players within 6 m
-  auto-work them (proximity only, no input — mobile hold gestures proved
-  unreliable), more workers = faster. The RV past the finish with anyone
-  aboard → `phase: 'won'`; host restart resets everything.
+  ~880 m road over hills to the ROUTE 65 finish (z ~843). Surfaces by
+  arc-fraction: asphalt → sand → gravel (`GRAVEL_START_T`) → mud
+  (`MUD_START_T`); gravel/mud shave top speed and add sway (car.ts). Terrain
+  height = `elevation(x, z)` (flat in city, sine hills beyond; y is always
+  derived client-side — the network still sends y = 0). `clampToRoadCorridor`
+  walls everyone into the road corridor past the gate so vehicles can't
+  drive around the 9 host-owned obstacles. Kinds: 5 classic (proximity-
+  cleared: stand within 6 m on foot, more workers = faster), plus on the
+  extension `carcass` (dead animals, proximity), `bridge` (river at
+  `RIVER_T`; proximity work BUILDS the deck — cleared shows the 'built'
+  child group instead of shoving aside), and `bumcamp` (3 block-mode bums
+  spawned at round start; progress = squatters whacked, cleared when all
+  flee — no proximity work). The RV past the finish with anyone aboard →
+  `phase: 'won'`; host restart resets everything.
 - **Scene** (`src/game/scene.ts`): built per day/night mode into a disposable
   group — `setMode` in `main.ts` swaps it live; players/bottles/FX live directly
   on the scene and survive. Collision = rectangular world bounds + AABB obstacle

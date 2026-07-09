@@ -55,6 +55,179 @@ function buildMesh(kind: RoadObstacleKind): THREE.Group {
       plank.position.set(-3.7 + i * 1.05, 1.0, 0);
       g.add(plank);
     }
+  } else if (kind === 'carcass') {
+    // Dead animals strewn across the lane — a moose on its side and a
+    // couple of boars, legs stiff in the air, crows' feast
+    const hide = std(0x5a4632, 0.95);
+    const boarHide = std(0x3e3630, 0.95);
+    const moose = new THREE.Group();
+    const mooseBody = new THREE.Mesh(new THREE.CapsuleGeometry(0.55, 1.7, 4, 10), hide);
+    mooseBody.rotation.z = Math.PI / 2;
+    mooseBody.position.y = 0.55;
+    const mooseHead = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.4, 0.7), hide);
+    mooseHead.position.set(-1.6, 0.4, 0.2);
+    mooseHead.rotation.y = 0.5;
+    const antler = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.35), std(0xc9b896, 0.8));
+    antler.position.set(-1.85, 0.62, 0.35);
+    antler.rotation.z = 0.4;
+    moose.add(mooseBody, mooseHead, antler);
+    const legGeo = new THREE.CylinderGeometry(0.07, 0.05, 0.9, 6);
+    for (let i = 0; i < 4; i++) {
+      const leg = new THREE.Mesh(legGeo, hide);
+      leg.position.set(-0.6 + (i % 2) * 0.5, 0.9, 0.35 + Math.floor(i / 2) * 0.25);
+      leg.rotation.x = -0.9 - (i % 2) * 0.25;
+      moose.add(leg);
+    }
+    moose.position.x = -1.4;
+    g.add(moose);
+    for (const [bx, bry] of [
+      [1.6, 0.6],
+      [3.1, -0.8],
+    ] as const) {
+      const boar = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 0.8, 4, 8), boarHide);
+      body.rotation.z = Math.PI / 2;
+      body.position.y = 0.32;
+      const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.25, 6), boarHide);
+      snout.rotation.z = Math.PI / 2;
+      snout.position.set(-0.72, 0.3, 0);
+      boar.add(body, snout);
+      for (let i = 0; i < 4; i++) {
+        const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.5, 5), boarHide);
+        leg.position.set(-0.25 + (i % 2) * 0.4, 0.55, 0.18 + Math.floor(i / 2) * 0.14);
+        leg.rotation.x = -1.1;
+        boar.add(leg);
+      }
+      boar.position.set(bx, 0, 0);
+      boar.rotation.y = bry;
+      g.add(boar);
+    }
+    // Crows picking at the feast
+    const crowMat = std(0x16181c, 0.7);
+    for (const [cx, cz] of [
+      [-0.4, 0.7],
+      [2.3, -0.5],
+    ] as const) {
+      const crow = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.14, 4, 6), crowMat);
+      body.rotation.x = 1.2;
+      body.position.y = 0.14;
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 5), std(0xc9a13a, 0.6));
+      beak.rotation.x = Math.PI / 2 + 0.5;
+      beak.position.set(0, 0.22, 0.14);
+      crow.add(body, beak);
+      crow.position.set(cx, 0.5, cz);
+      g.add(crow);
+    }
+  } else if (kind === 'bridge') {
+    // The river crossing. 'unbuilt': a plank pile and posts by a rope
+    // barrier. 'built' (revealed on cleared): a proper deck spanning
+    // the water. RoadObstacles toggles the two named groups.
+    const plank = std(0x8a6a3e, 0.85);
+    const darkWood = std(0x5e4527, 0.9);
+    const unbuilt = new THREE.Group();
+    unbuilt.name = 'unbuilt';
+    for (let i = 0; i < 5; i++) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.45), plank);
+      board.position.set(-2.6, 0.15 + i * 0.13, -0.2 + (i % 2) * 0.3);
+      board.rotation.y = (i % 2 ? 1 : -1) * 0.18;
+      unbuilt.add(board);
+    }
+    // rope barrier on posts across the lane
+    for (const px of [-3.6, 0, 3.6]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 1.1, 6), darkWood);
+      post.position.set(px, 0.55, 0);
+      unbuilt.add(post);
+    }
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 7.6, 5), std(0xb8a878, 0.9));
+    rope.rotation.z = Math.PI / 2;
+    rope.position.y = 0.95;
+    unbuilt.add(rope);
+    const built = new THREE.Group();
+    built.name = 'built';
+    built.visible = false;
+    // Deck of cross planks over two beams, low side rails
+    for (const bz of [-1.1, 1.1]) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(9.4, 0.22, 0.3), darkWood);
+      beam.position.set(0, 0.25, bz);
+      built.add(beam);
+    }
+    for (let i = 0; i < 12; i++) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.1, 2.9), plank);
+      board.position.set(-4.35 + i * 0.79, 0.41, 0);
+      board.rotation.y = (Math.random() - 0.5) * 0.05;
+      built.add(board);
+    }
+    for (const bz of [-1.42, 1.42]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.09, 0.09), darkWood);
+      rail.position.set(0, 1.0, bz);
+      built.add(rail);
+      for (const px of [-4.2, -1.4, 1.4, 4.2]) {
+        const baluster = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.65, 0.09), darkWood);
+        baluster.position.set(px, 0.7, bz);
+        built.add(baluster);
+      }
+    }
+    g.add(unbuilt, built);
+  } else if (kind === 'bumcamp') {
+    // A bum encampment squatting on the road: barrel fire, shopping
+    // cart, bedrolls, bottle stash. The bums themselves are host-
+    // simulated BumStates whacked away with sticks.
+    const rust = std(0x6b4a30, 0.8);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.95, 10), rust);
+    barrel.position.set(-0.4, 0.48, 0);
+    g.add(barrel);
+    // fire glow poking out of the barrel
+    const fire = new THREE.Mesh(
+      new THREE.ConeGeometry(0.3, 0.55, 7),
+      new THREE.MeshStandardMaterial({
+        color: 0xff8c2e,
+        emissive: 0xff6a1a,
+        emissiveIntensity: 1.6,
+        roughness: 0.7,
+      }),
+    );
+    fire.position.set(-0.4, 1.15, 0);
+    g.add(fire);
+    // shopping cart: box on cylinders
+    const cartMat = std(0x9aa0a8, 0.4);
+    const cart = new THREE.Group();
+    const basket = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.55), cartMat);
+    basket.position.y = 0.75;
+    cart.add(basket);
+    for (const [wx, wz] of [
+      [-0.3, -0.2],
+      [0.3, -0.2],
+      [-0.3, 0.2],
+      [0.3, 0.2],
+    ] as const) {
+      const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 8), std(0x2a2c30, 0.5));
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(wx, 0.1, wz);
+      cart.add(wheel);
+    }
+    cart.position.set(2.6, 0, 0.2);
+    cart.rotation.y = 0.7;
+    g.add(cart);
+    // bedrolls + bottles
+    for (const [bx, bz, bry] of [
+      [-2.9, 0.3, 0.4],
+      [1.2, -0.4, -0.7],
+    ] as const) {
+      const roll = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 1.1, 4, 8), std(0x55504a, 0.95));
+      roll.rotation.z = Math.PI / 2;
+      roll.rotation.y = bry;
+      roll.position.set(bx, 0.2, bz);
+      g.add(roll);
+    }
+    const bottleMat = std(0x3a5a2a, 0.3);
+    for (let i = 0; i < 5; i++) {
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.28, 6), bottleMat);
+      const a = i * 1.3;
+      bottle.position.set(-0.4 + Math.sin(a) * 0.9, 0.14, Math.cos(a) * 0.7);
+      bottle.rotation.x = (i % 2) * (Math.PI / 2 - 0.2);
+      g.add(bottle);
+    }
   } else {
     // junk pile: crates, tires, a sad mattress
     const crate = std(0x6e4b2a);
@@ -116,6 +289,7 @@ function makeProgressBar(): { holder: THREE.Group; fill: THREE.Sprite } {
 
 interface Entry {
   group: THREE.Group;
+  kind: RoadObstacleKind;
   bar: THREE.Group;
   fill: THREE.Sprite;
   ry: number;
@@ -145,6 +319,7 @@ export class RoadObstacles {
         this.scene.add(group);
         entry = {
           group,
+          kind: state.kind,
           bar: holder,
           fill,
           ry: state.ry,
@@ -164,6 +339,7 @@ export class RoadObstacles {
         entry.clearAnim = -1;
         entry.group.position.copy(entry.base);
         entry.group.rotation.set(0, entry.ry, 0);
+        this.setBridgeBuilt(entry, false);
       }
     }
     for (const [id, entry] of this.entries) {
@@ -174,7 +350,21 @@ export class RoadObstacles {
     }
   }
 
+  private setBridgeBuilt(entry: Entry, built: boolean) {
+    if (entry.kind !== 'bridge') return;
+    for (const child of entry.group.children) {
+      if (child.name === 'built') child.visible = built;
+      if (child.name === 'unbuilt') child.visible = !built;
+    }
+  }
+
   private applyClearedPose(entry: Entry, k: number) {
+    if (entry.kind === 'bridge') {
+      // Building, not clearing: the finished deck rises into place
+      this.setBridgeBuilt(entry, true);
+      entry.group.position.set(entry.base.x, entry.base.y - 0.4 * (1 - k), entry.base.z);
+      return;
+    }
     // Shoved off along the road's width, tipping into the ditch
     const dx = Math.cos(entry.ry);
     const dz = -Math.sin(entry.ry);

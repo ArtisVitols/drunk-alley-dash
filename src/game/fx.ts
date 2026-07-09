@@ -39,7 +39,7 @@ export class Rain {
     for (let i = 0; i < RAIN_COUNT; i++) {
       this.positions[i * 3] = -58 + Math.random() * 116;
       this.positions[i * 3 + 1] = Math.random() * 15;
-      this.positions[i * 3 + 2] = -30 + Math.random() * 485;
+      this.positions[i * 3 + 2] = -30 + Math.random() * 885;
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -92,7 +92,7 @@ export class Rain {
         }
         p[i * 3] = -58 + Math.random() * 116;
         p[i * 3 + 1] = 13 + Math.random() * 3;
-        p[i * 3 + 2] = -30 + Math.random() * 485;
+        p[i * 3 + 2] = -30 + Math.random() * 885;
       }
     }
     this.points.geometry.attributes.position.needsUpdate = true;

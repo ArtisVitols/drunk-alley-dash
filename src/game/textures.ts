@@ -302,6 +302,65 @@ export function sandTextures(repeatX: number, repeatY: number) {
 }
 
 // Countryside grass: layered green noise with lighter blade flecks.
+// Loose grey gravel: dense stone speckle over packed dirt, faint twin
+// wheel lines along V (the road ribbon maps V along its length).
+export function gravelTextures(repeatX: number, repeatY: number) {
+  const { canvas, ctx } = makeCanvas();
+  ctx.fillStyle = '#6e6a62';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 7000; i++) {
+    const v = 80 + Math.random() * 110;
+    ctx.fillStyle = `rgba(${v},${v * 0.97},${v * 0.9},${0.3 + Math.random() * 0.4})`;
+    const s = 1 + Math.random() * 3;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, s, s);
+  }
+  // packed wheel lines where tires ground the stones down
+  for (const cx of [150, 362]) {
+    const g = ctx.createLinearGradient(cx - 40, 0, cx + 40, 0);
+    g.addColorStop(0, 'rgba(70,66,60,0)');
+    g.addColorStop(0.5, 'rgba(70,66,60,0.45)');
+    g.addColorStop(1, 'rgba(70,66,60,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - 40, 0, 80, 512);
+  }
+  return { map: toTexture(canvas, repeatX, repeatY), bumpMap: toBump(canvas, repeatX, repeatY) };
+}
+
+// Wet river-lowland mud: dark sludge, glistening streaks, deep ruts.
+export function mudTextures(repeatX: number, repeatY: number) {
+  const { canvas, ctx } = makeCanvas();
+  ctx.fillStyle = '#463a2c';
+  ctx.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 3000; i++) {
+    const v = 40 + Math.random() * 45;
+    ctx.fillStyle = `rgba(${v},${v * 0.82},${v * 0.6},${0.25 + Math.random() * 0.3})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 512, 2 + Math.random() * 4, 1 + Math.random() * 3);
+  }
+  // wet glisten patches
+  for (let i = 0; i < 10; i++) {
+    const x = Math.random() * 512;
+    const y = Math.random() * 512;
+    const r = 20 + Math.random() * 55;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(120,110,95,0.3)');
+    g.addColorStop(1, 'rgba(120,110,95,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // deep wavy ruts along V
+  ctx.strokeStyle = 'rgba(20,16,12,0.55)';
+  for (const cx of [150, 200, 320, 366]) {
+    ctx.lineWidth = 14 + Math.random() * 10;
+    ctx.beginPath();
+    ctx.moveTo(cx, -10);
+    for (let y = 0; y <= 512; y += 32) {
+      ctx.lineTo(cx + Math.sin(y / 47 + cx) * 12, y);
+    }
+    ctx.stroke();
+  }
+  return { map: toTexture(canvas, repeatX, repeatY), bumpMap: toBump(canvas, repeatX, repeatY) };
+}
+
 export function grassTexture(repeatX: number, repeatY: number) {
   const { canvas, ctx } = makeCanvas();
   ctx.fillStyle = '#4d7a38';

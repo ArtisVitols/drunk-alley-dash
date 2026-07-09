@@ -13,7 +13,7 @@ import { MAX_PLAYERS } from '../net/peer';
 import { TRAILER_RADIUS, carRadius, trailerCenterXZ } from './car';
 import { FINISH, ROAD_OBSTACLE_DEFS, sampleRoad } from './road';
 
-const BOTTLE_COUNT = 34; // spread across alley + city + the road
+const BOTTLE_COUNT = 42; // spread across alley + city + the (long) road
 const COLLECT_RADIUS = 1.25;
 const CAR_COLLECT_RADIUS = 2.4;
 const CAR_ENTER_RADIUS = 3.5;
@@ -33,6 +33,9 @@ const BUM_FLEE_SECONDS = 4.5;
 const BUM_CLING_MARGIN = 1.0; // reach past the vehicle's collision circle
 const BUM_MAX = 6;
 const BUM_FIRST_WAVE = 16; // seconds into the round
+// Road-blocking bums squatting at each 'bumcamp' obstacle: the camp
+// clears only when every one of them has been whacked away
+const BUMS_PER_CAMP = 3;
 const HIT_RANGE = 2.6;
 
 // Weighted: beer common, vodka rare
@@ -300,13 +303,35 @@ export class HostSim {
         cleared: false,
       };
     });
+    // Squatters take their posts at each bum camp, spread across the lane
+    s.bums = [];
+    this.bumFleeUntil.clear();
+    for (const ob of s.roadObstacles) {
+      if (ob.kind !== 'bumcamp') continue;
+      for (let i = 0; i < BUMS_PER_CAMP; i++) {
+        const across = (i - (BUMS_PER_CAMP - 1) / 2) * 2.6;
+        const along = (Math.random() - 0.5) * 2;
+        this.state.bums.push({
+          id: this.nextBumId++,
+          kind: Math.random() < 0.5 ? 'man' : 'woman',
+          p: [
+            ob.p[0] + Math.cos(ob.ry) * across + Math.sin(ob.ry) * along,
+            0,
+            ob.p[2] - Math.sin(ob.ry) * across + Math.cos(ob.ry) * along,
+          ],
+          ry: ob.ry + Math.PI / 2 + (Math.random() - 0.5) * 0.8,
+          hp: BUM_HP,
+          mode: 'block',
+          car: 0,
+          site: ob.id,
+        });
+      }
+    }
     s.bottles = [];
     this.respawns = [];
     for (let i = 0; i < BOTTLE_COUNT; i++) {
       s.bottles.push(this.makeBottle());
     }
-    s.bums = [];
-    this.bumFleeUntil.clear();
     this.bumWaveAt = this.clock + BUM_FIRST_WAVE;
     s.phase = 'play';
   }
@@ -371,9 +396,10 @@ export class HostSim {
 
     // Team clears road obstacles just by standing at them on foot —
     // no button gymnastics (mobile hold gestures proved unreliable).
-    // More helpers = faster.
+    // More helpers = faster. Bum camps are the exception: their
+    // progress is beaten out of the squatters with sticks below.
     for (const ob of s.roadObstacles) {
-      if (ob.cleared) continue;
+      if (ob.cleared || ob.kind === 'bumcamp') continue;
       let workers = 0;
       for (const pl of s.players) {
         if (pl.car !== null) continue;
@@ -387,12 +413,22 @@ export class HostSim {
       }
     }
 
+    // Bum camps clear when all their squatters have been whacked away
+    for (const ob of s.roadObstacles) {
+      if (ob.kind !== 'bumcamp' || ob.cleared) continue;
+      const standing = s.bums.filter((b) => b.site === ob.id && b.mode === 'block').length;
+      ob.progress = (BUMS_PER_CAMP - standing) / BUMS_PER_CAMP;
+      if (standing === 0) ob.cleared = true;
+    }
+
     // ——— Bums ————————————————————————————————————————————————
     // Waves of stinky drifters. They spawn a short walk away from a
     // vehicle, shamble to its door, and cling there banging until the
     // team piles out and whacks them away with sticks.
     if (this.clock >= this.bumWaveAt) {
-      const room = BUM_MAX - s.bums.length;
+      // Camp squatters don't count against the roaming-wave cap
+      const roaming = s.bums.filter((b) => b.mode !== 'block').length;
+      const room = BUM_MAX - roaming;
       const count = Math.min(room, 1 + Math.ceil(s.players.length / 2));
       const targetCar = s.cars[Math.floor(Math.random() * s.cars.length)];
       for (let i = 0; i < count; i++) {
@@ -412,6 +448,21 @@ export class HostSim {
         if (this.clock >= (this.bumFleeUntil.get(bum.id) ?? 0)) {
           this.bumFleeUntil.delete(bum.id);
           return false;
+        }
+        return true;
+      }
+      // Camp squatters hold their ground; face the nearest drunk when
+      // one comes close (menace is free)
+      if (bum.mode === 'block') {
+        let bestD = 12 * 12;
+        for (const pl of s.players) {
+          const dx = pl.p[0] - bum.p[0];
+          const dz = pl.p[2] - bum.p[2];
+          const d2 = dx * dx + dz * dz;
+          if (d2 < bestD) {
+            bestD = d2;
+            bum.ry = Math.atan2(dx, dz);
+          }
         }
         return true;
       }

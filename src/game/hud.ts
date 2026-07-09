@@ -121,17 +121,29 @@ export class HUD {
     if (text !== null) warn.textContent = text;
   }
 
-  // Progress panel while the team works on a road obstacle
-  setClearPanel(progress: number | null, workers = 0) {
+  // Progress panel while the team works on a road obstacle; the label
+  // matches the job (clearing, dragging carcasses, building, whacking)
+  setClearPanel(progress: number | null, workers = 0, kind = '') {
     const panel = $('clear-panel');
     panel.classList.toggle('hidden', progress === null);
     if (progress === null) return;
-    $('clear-title').textContent = `🛠 Clearing the road… ${Math.round(progress * 100)}%`;
+    const pct = `${Math.round(progress * 100)}%`;
+    const title =
+      kind === 'bridge'
+        ? `🔨 Building the bridge… ${pct}`
+        : kind === 'carcass'
+          ? `🦌 Dragging the poor beasts aside… ${pct}`
+          : kind === 'bumcamp'
+            ? `🏏 Bums hold the road! ${pct} whacked`
+            : `🛠 Clearing the road… ${pct}`;
+    $('clear-title').textContent = title;
     $<HTMLDivElement>('clear-fill').style.width = `${Math.round(progress * 100)}%`;
     $('clear-workers').textContent =
-      workers > 1
-        ? `👷 ${workers} clearing — kartu greičiau!`
-        : 'More friends here = faster clearing';
+      kind === 'bumcamp'
+        ? 'Beat them with your sticks — SPACE / 🏏'
+        : workers > 1
+          ? `👷 ${workers} clearing — kartu greičiau!`
+          : 'More friends here = faster clearing';
   }
 
   setScores(players: PlayerState[], myId: string) {

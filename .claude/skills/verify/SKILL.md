@@ -53,26 +53,32 @@ a00b27b8; recreate from this outline if gone:
    `.srow.me .pts` > 0; check the other browser's scoreboard agrees. Blind
    wandering no longer works — the map is alley + city and too big. There is
    no round timer; scores only ever climb.
-6. The RV: the ONE vehicle (CAR_SPAWNS in `src/net/network.ts`, at (0, 42)
-   facing the gate; radius 1.85 — teleport ≥2.4 m from center or the pushout
-   moves you). `#car-btn` unhides within 3.2 m → press E (or click it) →
+6. The fleet (CAR_SPAWNS in `src/net/network.ts`): the RV at (0, 42) and the
+   sedan+camper 'caravan' at (0, 56), both facing the gate; RV radius 1.85 —
+   teleport ≥2.4 m from center or the pushout
+   moves you. `#car-btn` unhides within 3.2 m → press E (or click it) →
    `__dad.car` non-null. Up to 4 aboard: occupants[0] drives (`__dad.driver`),
    the rest are window passengers pinned to the car; when the driver exits
    the next occupant is promoted. Use `?dev=1` + `__dad.teleport(x, z, ry?)`
    to skip walks — it moves the RV too while driving. It accelerates slowly:
    give drive-distance probes 14 s+ under SwiftShader.
-7. Road trip: `__dad.obstacles` (5, host resets them per run), `__dad.surface`
-   (city/asphalt/sand/grass — use `__dad.roadPoint(t)` for on-road coords),
-   `__dad.alt` (terrain elevation — hills; expect a few meters of spread
-   along the road), `__dad.phase`. Past the gate everyone is walled into the
-   road corridor (`clampToRoadCorridor`, road half-width + 2 m) — driving
-   around obstacles must FAIL. Clearing is proximity-based: stand within 6 m
-   of an uncleared obstacle on foot → progress climbs, no key/button needed
+7. Road trip: `__dad.obstacles` (9, host resets them per run), `__dad.surface`
+   (city/asphalt/sand/gravel/mud/grass — use `__dad.roadPoint(t)` for on-road
+   coords; the road is ~880 m, finish at z ~843), `__dad.alt` (terrain
+   elevation — hills; expect a few meters of spread along the road),
+   `__dad.phase`. Past the gate everyone is walled into the road corridor
+   (`clampToRoadCorridor`, road half-width + 2 m) — driving around obstacles
+   must FAIL. Most kinds clear proximity-based: stand within 6 m of an
+   uncleared obstacle on foot → progress climbs, no key/button needed
    (solo 15 sim-secs — minutes of wall time under SwiftShader; use ~240 s
-   timeouts). Win: drive the occupied RV past `roadPoint(0.99)` → phase
-   `'won'`, `#won` overlay, host's `#again-btn` restarts. NOTE: on the host,
-   `__dad`'s state flips before the next render frame — wait for DOM/overlay
-   changes, don't read them instantly after a phase flip.
+   timeouts). `bridge` (at RIVER_T ≈ 0.80) works the same but BUILDS a deck.
+   `bumcamp` (t ≈ 0.68) is different: 3 block-mode bums spawn at round start
+   (`__dad.bums`), each takes 3 stick hits (`__dad.hit()` beside them); the
+   camp clears when all have fled. Win: drive the occupied RV past
+   `roadPoint(0.99)` → phase `'won'`, `#won` overlay, host's `#again-btn`
+   restarts. NOTE: on the host, `__dad`'s state flips before the next render
+   frame — wait for DOM/overlay changes, don't read them instantly after a
+   phase flip.
 8. Disconnect probe: close browser B; A's scoreboard must drop to 1 row
    within ~5 s (heartbeat timeout in `src/net/peer.ts`).
 

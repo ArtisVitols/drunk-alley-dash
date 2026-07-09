@@ -106,7 +106,10 @@ let rain: Rain | null = null; // night-only
 let steams = world.steamVents.map((vent) => new Steam(scene, vent));
 const pickupFX = new PickupFX(scene);
 const roadObs = new RoadObstacles(scene);
-let roadAabbs: Obstacle[] = [];
+let roadAabbs: Obstacle[] = []; // blocks vehicles
+// Walkers can step INTO a bum camp to whack its squatters — the camp
+// AABB would otherwise push them out beyond stick range
+let walkAabbs: Obstacle[] = [];
 const hud = new HUD();
 const sound = new Sound();
 const gauges = new Gauges();
@@ -264,11 +267,12 @@ function updateCarButton() {
   }
 }
 
-// Obstacle work state + the progress panel, refreshed every frame
+// Obstacle work state + the progress panel, refreshed every frame.
+// Bum camps aren't proximity work — you whack, you don't shovel.
 function updateClearPanel() {
   const ob = latestState?.phase === 'play' ? nearObstacle() : null;
-  working = ob !== null;
-  hud.setClearPanel(ob ? ob.progress : null, ob ? workerCount(ob) : 0);
+  working = ob !== null && ob.kind !== 'bumcamp';
+  hud.setClearPanel(ob ? ob.progress : null, ob ? workerCount(ob) : 0, ob?.kind ?? '');
 }
 
 // Raw pointer events (no click) so the browser's long-press
@@ -562,6 +566,7 @@ function applyState(state: WorldState, t: number) {
 
   roadObs.sync(state.roadObstacles);
   roadAabbs = roadObs.aabbs(state.roadObstacles);
+  walkAabbs = roadObs.aabbs(state.roadObstacles.filter((o) => o.kind !== 'bumcamp'));
 
   bums.sync(state.bums);
   // Team-wide alarm while bums cling to a vehicle (it can't drive off)
@@ -713,7 +718,7 @@ renderer.setAnimationLoop(() => {
       // Passenger: the car is driven elsewhere; we just hang out the window
       myMesh.visible = false;
     } else {
-      local.update(dt, fwd, turn, world, circles, roadAabbs);
+      local.update(dt, fwd, turn, world, circles, walkAabbs);
       myMesh.visible = true;
       myMesh.position.set(local.pos.x, elevation(local.pos.x, local.pos.z), local.pos.z);
       myMesh.rotation.y = local.ry;

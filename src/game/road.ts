@@ -7,8 +7,17 @@ import type { RoadObstacleKind, Vec3 } from '../net/network';
 
 export const GATE_Z = 120;
 export const ROAD_HALF_WIDTH = 4.5;
-export const ASPHALT_END_T = 0.35; // asphalt gives way to sand here
+// Surface bands along the (extended) curve: asphalt → sand → gravel →
+// mud. The t values are arc-fractions of the FULL 880 m road; the first
+// two boundaries sit exactly where they did before the extension.
+export const ASPHALT_END_T = 0.1575; // asphalt gives way to sand here
+export const GRAVEL_START_T = 0.4537; // the old road end — gravel begins
+export const MUD_START_T = 0.7873; // river lowlands — mud to the finish
 
+// The original lane to the old ROUTE 65 junction (z 442), then the
+// extension: a much longer winding drive with action sites spread out
+// along it — dead animals, a bum camp, the river crossing — ending at
+// the relocated ROUTE 65 finish (z ~843).
 const CONTROL_POINTS: [number, number][] = [
   [0, 116],
   [0, 134],
@@ -21,6 +30,17 @@ const CONTROL_POINTS: [number, number][] = [
   [8, 382],
   [-4, 416],
   [0, 442],
+  [14, 474],
+  [-18, 512],
+  [10, 552],
+  [-16, 594],
+  [6, 634],
+  [-14, 676],
+  [16, 720],
+  [-12, 762],
+  [8, 800],
+  [-2, 830],
+  [0, 852],
 ];
 
 export const roadCurve = new THREE.CatmullRomCurve3(
@@ -30,7 +50,7 @@ export const roadCurve = new THREE.CatmullRomCurve3(
   0.5,
 );
 
-const SAMPLE_COUNT = 240;
+const SAMPLE_COUNT = 520; // the extended road is ~880 m — keep samples dense
 const samples: { x: number; z: number; t: number }[] = [];
 for (let i = 0; i <= SAMPLE_COUNT; i++) {
   const t = i / SAMPLE_COUNT;
@@ -122,21 +142,35 @@ export function nearestRoadT(x: number, z: number): number {
   return nearestSample(x, z).t;
 }
 
-export type Surface = 'city' | 'asphalt' | 'sand' | 'grass';
+export type Surface = 'city' | 'asphalt' | 'sand' | 'gravel' | 'mud' | 'grass';
 
 export function roadSurface(x: number, z: number): Surface {
   if (z <= GATE_Z) return 'city';
   const near = nearestSample(x, z);
-  if (near.d <= ROAD_HALF_WIDTH) return near.t < ASPHALT_END_T ? 'asphalt' : 'sand';
-  return 'grass';
+  if (near.d > ROAD_HALF_WIDTH) return 'grass';
+  if (near.t < ASPHALT_END_T) return 'asphalt';
+  if (near.t < GRAVEL_START_T) return 'sand';
+  if (near.t < MUD_START_T) return 'gravel';
+  return 'mud';
 }
 
 export const FINISH = sampleRoad(0.99);
 
+// The river crosses the road here; the bridge obstacle spans it and
+// the scene draws the water band at this sample.
+export const RIVER_T = 0.8027;
+
+// t values are arc-fractions of the extended curve; ids 1-5 sit at the
+// exact same world spots they occupied before the road grew.
 export const ROAD_OBSTACLE_DEFS: { id: number; kind: RoadObstacleKind; t: number }[] = [
-  { id: 1, kind: 'roadblock', t: 0.1 },
-  { id: 2, kind: 'log', t: 0.28 },
-  { id: 3, kind: 'boulders', t: 0.48 },
-  { id: 4, kind: 'junk', t: 0.66 },
-  { id: 5, kind: 'log', t: 0.84 },
+  { id: 1, kind: 'roadblock', t: 0.045 },
+  { id: 2, kind: 'log', t: 0.126 },
+  { id: 3, kind: 'boulders', t: 0.2157 },
+  { id: 4, kind: 'junk', t: 0.2968 },
+  { id: 5, kind: 'log', t: 0.3777 },
+  // The extension: long drives between bigger jobs
+  { id: 6, kind: 'carcass', t: 0.5577 },
+  { id: 7, kind: 'bumcamp', t: 0.6823 },
+  { id: 8, kind: 'bridge', t: RIVER_T },
+  { id: 9, kind: 'carcass', t: 0.9185 },
 ];
