@@ -295,13 +295,18 @@ export function buildScene(
   ground.receiveShadow = true;
   root.add(ground);
 
-  // Rain puddles — mirror-wet at night to catch the neon, drying damp
-  // patches by day. Alley + a few out on the city streets.
+  // Rain puddles — dark wet asphalt with a soft sheen, not a mirror:
+  // barely lighter than the ground by day, catching a hint of glow at
+  // night. Slightly transparent so the asphalt texture reads through.
   const puddleMat = new THREE.MeshStandardMaterial({
-    color: night ? 0x232c40 : 0x8095b3,
-    roughness: night ? 0.1 : 0.2,
-    metalness: night ? 0.65 : 0.45,
-    envMapIntensity: night ? 1.6 : 0.9,
+    // High roughness + no metalness: the grazing-angle Fresnel off the
+    // bright IBL otherwise turns every puddle into a white mirror
+    color: night ? 0x10141d : 0x333c48,
+    roughness: night ? 0.5 : 0.62,
+    metalness: 0.05,
+    envMapIntensity: night ? 0.9 : 0.5,
+    transparent: true,
+    opacity: 0.8,
   });
   for (const [x, z, r] of [
     [-3, -12, 1.7],
