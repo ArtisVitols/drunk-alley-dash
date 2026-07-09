@@ -84,7 +84,11 @@ before testing production — the Pages CDN caches HTML up to ~10 min (bust with
   right side above the 🚗 button (CSS-anchored `#stick`), always visible
   during play on coarse-pointer devices — touches starting within
   `GRAB_RADIUS` of its center grab it; deadzone + expo + smoothing. Touch
-  overrides keyboard while `controls.active`.
+  overrides keyboard while `controls.active`. Any OTHER touch swipes the
+  camera: horizontal drag → `takeCamSwipe()` px consumed by main.ts into
+  `camOrbit` (yaw offset on the chase camera; drag right = look right; eases
+  back behind the player while moving unless `lookHeld`). `__dad.camOrbit`
+  for tests.
 - **Bums** (`src/net/network.ts` `BumState`, host AI in `host.ts`, meshes in
   `src/game/bums.ts`): host-simulated stinky men/women spawn in waves
   (first ~16 s in, then every ~36-64 s, max 6 roaming), shamble to the nearest

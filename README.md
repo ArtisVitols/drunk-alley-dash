@@ -24,8 +24,10 @@ hops in/out of vehicles, **SPACE** (or **F**) swings your stick. On
 **phones/tablets** (the primary way to play) a joystick ring sits on the
 right side of the screen, always visible above the 🚗 button: up/down walks
 or drives, left/right turns. It ignores tiny thumb wobble (deadzone),
-smooths the input, and gives finer steering near the center. The 🏏 **Whack**
-button lives under your left thumb whenever you're on foot.
+smooths the input, and gives finer steering near the center. **Swipe
+anywhere else** with your other thumb to look around — the camera swings
+back behind you once you move on. The 🏏 **Whack** button lives under your
+left thumb whenever you're on foot.
 Walking drunk means your heading drifts on its own — deal with it.
 
 **The bums (bomžai):** waves of stinky drifters shamble out of the shadows

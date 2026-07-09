@@ -632,6 +632,9 @@ function onPhaseChange(state: WorldState) {
 // --- Camera ------------------------------------------------------------------
 
 const camTarget = new THREE.Vector3();
+// Swipe-look: yaw offset from the default chase view. The left thumb
+// drags it; it eases back behind the player while moving.
+let camOrbit = 0;
 
 function updateCamera(dt: number, t: number) {
   const inCar = myCarId !== null;
@@ -639,7 +642,18 @@ function updateCamera(dt: number, t: number) {
   const carMesh = inCar && !amDriver ? cars.get(myCarId!)?.group : null;
   const px = inCar ? (carMesh ? carMesh.position.x : carCtrl.pos.x) : local.pos.x;
   const pz = inCar ? (carMesh ? carMesh.position.z : carCtrl.pos.z) : local.pos.z;
-  const ry = inCar ? (carMesh ? carMesh.rotation.y : carCtrl.ry) : local.ry;
+  const heading = inCar ? (carMesh ? carMesh.rotation.y : carCtrl.ry) : local.ry;
+
+  // Drag right → look right. While moving (and no finger holding the
+  // look), the camera eases back behind the player.
+  camOrbit += controls.takeCamSwipe() * 0.0075;
+  const movingNow = inCar
+    ? Math.abs(amDriver ? carCtrl.speed : (cars.get(myCarId!)?.currentSpeed ?? 0)) > 1.5
+    : local.moving;
+  if (movingNow && !controls.lookHeld) camOrbit *= Math.exp(-dt / 0.9);
+  camOrbit = ((camOrbit + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+
+  const ry = heading + camOrbit;
   const dist = inCar ? 10 : 6.2;
   const groundY = elevation(px, pz);
   camTarget.set(px - Math.sin(ry) * dist, 0, pz - Math.cos(ry) * dist);
@@ -880,6 +894,9 @@ renderer.setAnimationLoop(() => {
   },
   get drawCalls(): number {
     return frameDrawCalls;
+  },
+  get camOrbit(): number {
+    return camOrbit;
   },
   get critterPos(): [number, number][] {
     return critters.positions;

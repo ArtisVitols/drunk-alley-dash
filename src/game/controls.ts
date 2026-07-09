@@ -23,6 +23,12 @@ export class TouchControls {
   private touchX = 0;
   private touchY = 0;
 
+  // Any OTHER touch (typically the left thumb) swipes the camera:
+  // horizontal drag accumulates here and main.ts consumes it per frame
+  private camId: number | null = null;
+  private camLastX = 0;
+  private camDx = 0;
+
   private readonly stick = document.getElementById('stick')!;
   private readonly stickKnob = document.getElementById('stick-knob')!;
   private readonly coarse = window.matchMedia('(pointer: coarse)').matches;
@@ -33,27 +39,40 @@ export class TouchControls {
       const help = document.getElementById('help');
       if (help) {
         help.innerHTML =
-          'Right stick: up walks, sideways turns &nbsp;·&nbsp; 🏏 whacks bums &nbsp; 🚗 for cars ' +
-          '&nbsp; stand at junk to clear &nbsp;·&nbsp; 🍺 +1 🍷 +2 🥃 +3';
+          'Right stick moves &nbsp; swipe anywhere else to look around &nbsp;·&nbsp; 🏏 whacks bums ' +
+          '&nbsp; 🚗 for cars &nbsp; stand at junk to clear &nbsp;·&nbsp; 🍺 +1 🍷 +2 🥃 +3';
       }
     }
     canvas.addEventListener('pointerdown', (e) => {
-      if (e.pointerType !== 'touch' || !this.enabled() || this.pointerId !== null) return;
+      if (e.pointerType !== 'touch' || !this.enabled()) return;
       const c = this.center();
-      if (Math.hypot(e.clientX - c.x, e.clientY - c.y) > GRAB_RADIUS) return;
-      this.pointerId = e.pointerId;
-      this.touchX = e.clientX;
-      this.touchY = e.clientY;
+      const onStick = Math.hypot(e.clientX - c.x, e.clientY - c.y) <= GRAB_RADIUS;
+      if (onStick && this.pointerId === null) {
+        this.pointerId = e.pointerId;
+        this.touchX = e.clientX;
+        this.touchY = e.clientY;
+      } else if (!onStick && this.camId === null) {
+        // Everywhere else: this finger looks around
+        this.camId = e.pointerId;
+        this.camLastX = e.clientX;
+      } else {
+        return;
+      }
       canvas.setPointerCapture(e.pointerId);
       e.preventDefault();
     });
     canvas.addEventListener('pointermove', (e) => {
-      if (this.pointerId !== e.pointerId) return;
-      this.touchX = e.clientX;
-      this.touchY = e.clientY;
+      if (this.pointerId === e.pointerId) {
+        this.touchX = e.clientX;
+        this.touchY = e.clientY;
+      } else if (this.camId === e.pointerId) {
+        this.camDx += e.clientX - this.camLastX;
+        this.camLastX = e.clientX;
+      }
     });
     const end = (e: PointerEvent) => {
       if (this.pointerId === e.pointerId) this.pointerId = null;
+      if (this.camId === e.pointerId) this.camId = null;
     };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
@@ -66,6 +85,18 @@ export class TouchControls {
 
   get active(): boolean {
     return this.pointerId !== null || Math.abs(this.fwd) + Math.abs(this.turn) > 0.02;
+  }
+
+  // Horizontal camera-swipe pixels since the last call (consumed)
+  takeCamSwipe(): number {
+    const dx = this.camDx;
+    this.camDx = 0;
+    return dx;
+  }
+
+  // True while a finger is holding the camera (blocks auto-recenter)
+  get lookHeld(): boolean {
+    return this.camId !== null;
   }
 
   sample(dt: number): void {
